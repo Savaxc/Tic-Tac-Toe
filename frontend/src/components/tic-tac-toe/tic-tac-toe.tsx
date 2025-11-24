@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Board } from '../board/board';
 import '../board/board.css';
 import './tic-tac-toe.css';
