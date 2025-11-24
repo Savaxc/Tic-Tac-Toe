@@ -1,0 +1,26 @@
+.board {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+}
+
+.board_row {
+  display: flex;
+}
+
+.cell {
+  width: 100px;
+  height: 100px;
+  border: 2px solid #ccc;
+  background-color: #f8f8f8;
+  font-size: 48px;
+  font-weight: bold;
+  cursor: pointer;
+  outline: none;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  transition: background-color 0.2s, color 0.2s;
+}
