@@ -4,8 +4,10 @@ import { Board } from '../board/board';
 import '../board/board.css';
 import './tic-tac-toe.css';
 
+type BoardArray = Array<Array<string | null>>;
+
 export const TicTacToe = () => {
-  const [board] = useState<any>(
+  const [board] = useState<BoardArray>(
     Array.from({ length: 3 }, () => Array.from({ length: 3 }, () => null))  //kreiranje table, 3x3
   );
 
