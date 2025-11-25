@@ -4,7 +4,7 @@ import './home.css';
 export const HomePage: React.FC = () => {
   const navigate = useNavigate();
 
-  return (
+return (
     <div className="home-container">
       <div className="button-group">
         <button className="home-button" onClick={() => navigate('/single-player')}>

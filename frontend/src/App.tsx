@@ -2,6 +2,7 @@ import "./App.css";
 import { TicTacToe } from "./components/tic-tac-toe/tic-tac-toe";
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { HomePage } from "./pages/home/home";
+import { TicTacToeMulti } from "./components/tic-tac-toe-multiplayer/tic-tac-toe-multi";
 
 
 function App() {
@@ -17,6 +18,7 @@ function App() {
           <Routes>
             <Route path="/" element={<HomePage />} />
             <Route path="/single-player" element={<TicTacToe />} />
+            <Route path="/multiplayer" element={<TicTacToeMulti />} />
           </Routes>
         </Router>
 			</main>
