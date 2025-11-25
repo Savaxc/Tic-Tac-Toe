@@ -1,5 +1,8 @@
 import "./App.css";
 import { TicTacToe } from "./components/tic-tac-toe/tic-tac-toe";
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { HomePage } from "./pages/home/home";
+
 
 function App() {
   return (
@@ -10,7 +13,12 @@ function App() {
 				</h2>
 			</header>
 			<main>
-        <TicTacToe/>
+        <Router>
+          <Routes>
+            <Route path="/" element={<HomePage />} />
+            <Route path="/single-player" element={<TicTacToe />} />
+          </Routes>
+        </Router>
 			</main>
 		</div>
 	);

@@ -106,7 +106,7 @@ export const TicTacToe = () => {
 
   const restartGame = () => {
     setBoard(initialBoard);
-    setPlayer('X');
+    // setPlayer('X');
     setWinner(null);
     setIsNoWinner(false);
   }
