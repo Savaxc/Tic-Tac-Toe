@@ -86,8 +86,10 @@ export const TicTacToe = () => {
         newRow.map((cell, cellIndex) => 
           rowIndex === computerRow && cellIndex === computerCol ? 'O' : cell));
       
-      setBoard(updatedComputerBoard);
-      setWinner(checkWinner(updatedComputerBoard));
+      setTimeout(() => {
+				setBoard(updatedComputerBoard);
+				setWinner(checkWinner(updatedComputerBoard));
+			}, 200); // delay
     }
      
   };
