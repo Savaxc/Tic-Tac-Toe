@@ -50,12 +50,12 @@ const checkWinner = (board: BoardArray): string | null => {
 };
 
 export const TicTacToe = () => {
-  const [board, setBoard] = useState<BoardArray>(
-    Array.from({ length: 3 }, () =>
-       Array.from({ length: 3 }, () => null))  //kreiranje table, 3x3
-  );
+  const initialBoard = Array.from({ length: 3 }, () =>
+      Array(3).fill(null));                     //kreiranje table null vrednostima, 3x3
+  const [board, setBoard] = useState<BoardArray>(initialBoard);
   const [player, setPlayer] = useState<string>('X');
   const [winner, setWinner] = useState<string | null>(null);
+  const [isNoWinner, setIsNoWinner] = useState<boolean>(false);
 
   //field taken -> can't click again
   //winner -> no further play
@@ -79,8 +79,18 @@ export const TicTacToe = () => {
     
     // setPlayer(player === 'X' ? 'O' : 'X');
 
+    // No Winner
+		const hasNullValue = updatedPlayerBoard.some((row) =>
+			row.some((cell) => cell === null)
+		);
+
+		if (!newWinner  && !hasNullValue) {
+			setIsNoWinner(true);
+			return;
+		}
+
     //Computer's move
-    if(!newWinner) {
+    if(!newWinner && hasNullValue) {
       const [computerRow, computerCol] = makeComputerMove(updatedPlayerBoard);
       const updatedComputerBoard = updatedPlayerBoard.map((newRow, rowIndex) => 
         newRow.map((cell, cellIndex) => 
@@ -94,11 +104,23 @@ export const TicTacToe = () => {
      
   };
 
+  const restartGame = () => {
+    setBoard(initialBoard);
+    setPlayer('X');
+    setWinner(null);
+    setIsNoWinner(false);
+  }
+
   return (
-    <div className='game'>
-      <h1>Tic-Tac-Toe</h1>
-      <Board board={board} handleClick={handleOnClick} />
-    </div>
-  );
+		<div className='game'>
+			<h1> Tic-Tac-Toe</h1>
+			<Board board={board} handleClick={handleOnClick} />
+			{winner && <p>{winner === "X" ? "You Win" : "AI Wins"}</p>}
+			{isNoWinner && <p> No one wins</p>}
+			<button className='reset' type='button' onClick={() => restartGame()}>
+				Restart Game
+			</button>
+		</div>
+	);
 }
 
