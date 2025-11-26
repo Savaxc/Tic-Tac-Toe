@@ -63,15 +63,25 @@ export const TicTacToeMulti = () => {
   };
 
   return (
-    <div className='game'>
-      <h1> Tic-Tac-Toe LOCAL Multiplayer</h1>
-      <p>Current Turn: {player}</p>
-      <Board board={board} handleClick={handleOnClick} />
-      {winner && <p>{winner} Wins!</p>}
-      {isNoWinner && <p>No one wins</p>}
-      <button className='reset' type='button' onClick={restartGame}>
-        Restart Game
+    <>
+      <div className='game'>
+        <h1> Tic-Tac-Toe LOCAL Multiplayer</h1>
+        <p>Current Turn: {player}</p>
+        <Board board={board} handleClick={handleOnClick} />
+        {winner && <p>{winner} Wins!</p>}
+        {isNoWinner && <p>No one wins</p>}
+        <button className='reset' type='button' onClick={restartGame}>
+          Restart Game
+        </button>
+      </div>
+
+      
+      <button className='newGame' type='button'>
+        Create New Game
       </button>
-    </div>
+      <button className='joinGame' type='button'>
+        Join Existing Game
+      </button>
+    </>
   );
 };
