@@ -1,6 +1,6 @@
-const express = require("express");
+import express from "express";
 const app = express();
-const cors = require("cors");
+import cors from "cors";
 const corsOptions = {
   origin: ["http://localhost:5173"],
 };
@@ -8,7 +8,7 @@ const corsOptions = {
 app.use(cors(corsOptions));
 
 app.get("/api", (req, res) => {
-  res.json({ fruits: ["apple", "orange", "backend"] });
+  res.json({ fruits: ["apple", "mandarina", "backend"] });
 });
 
 app.listen(8080, () => {
