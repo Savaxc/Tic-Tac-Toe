@@ -1,16 +1,20 @@
-import express from "express";
-const app = express();
-import cors from "cors";
-const corsOptions = {
-  origin: ["http://localhost:5173"],
-};
+import dotenv from "dotenv";
+dotenv.config();
 
-app.use(cors(corsOptions));
+import http from "http";
+import { Server } from "socket.io";
+import { app } from "./app";
+import { initGameSocket } from "./sockets/gameSocket";
 
-app.get("/api", (req, res) => {
-  res.json({ fruits: ["apple", "mandarina", "backend"] });
+const server = http.createServer(app);
+
+const io = new Server(server, {
+  cors: { origin: "*" }
 });
 
-app.listen(8080, () => {
-  console.log("Server started on port 8080");
+initGameSocket(io);
+
+server.listen(process.env.PORT, () => {
+  console.log(`Backend running on port ${process.env.PORT}`);
 });
+
