@@ -24,3 +24,24 @@
   align-items: center;
   transition: background-color 0.2s, color 0.2s;
 }
+
+/*Multiplayer Page*/
+.game-status h2 {
+    font-size: 48px;
+    font-weight: 800;
+    margin: 20px 0;
+    padding: 10px;
+    border-radius: 8px;
+}
+
+.game-status .winner-message {
+    color: #e63946; 
+    background: #fde3e6;
+    border: 3px solid #e63946;
+}
+
+.game-status .draw-message {
+    color: #457b9d; 
+    background: #e0f2f7;
+    border: 3px solid #457b9d;
+}

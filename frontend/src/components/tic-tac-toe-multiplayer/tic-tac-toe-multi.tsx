@@ -1,87 +1,204 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Board } from "../board/board";
+import axios from "axios";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { io } from "socket.io-client";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+//@ts-ignore 
+import confetti from "https://cdn.skypack.dev/canvas-confetti";
 
+const socket = io("http://localhost:8080", { autoConnect: false });
 
 type BoardArray = Array<Array<string | null>>;
 
+export const TicTacToeMulti = () => {
+  const navigate = useNavigate();
+  const [params] = useSearchParams();
+  const roomId = params.get("room");
+
+  const emptyBoard: BoardArray = Array.from({ length: 3 }, () =>
+    Array(3).fill(null)
+  );
+
+  const [board, setBoard] = useState<BoardArray>(emptyBoard);
+  const [mySymbol, setMySymbol] = useState<"X" | "O">("X");
+  const [winner, setWinner] = useState<string | null>(null);
+  const [isDraw, setIsDraw] = useState(false);
+  const [isInRoom, setIsInRoom] = useState(false);
+
+  // TURN LOGIC
+  const getCurrentTurn = (boardState: BoardArray) => {
+    const moves = boardState.flat().filter(Boolean).length;
+    return moves % 2 === 0 ? "X" : "O";
+  };
+  const currentTurn = getCurrentTurn(board);
+
+  // RESTART
+  const restart = (emitToServer = true) => {
+    setBoard(emptyBoard);
+    setWinner(null);
+    setIsDraw(false);
+
+    if (emitToServer) socket.emit("restartGame", { roomId });
+  };
+
+  // SOCKET: JOIN ROOM ON LOAD
+  useEffect(() => {
+    if (!roomId) return;
+
+    // ensure connected
+    if (!socket.connected) socket.connect();
+
+    socket.emit("joinRoom", roomId);
+
+    const handleAssignSymbol = (symbol: "X" | "O") => {
+      setMySymbol(symbol);
+      setIsInRoom(true);
+    };
+
+    const handleOpponentMove = (newBoard: BoardArray) => {
+      setBoard(newBoard);
+    };
+
+    const handleGameFinished = (winner: string | null) => {
+      setWinner(winner);
+    };
+
+    const handleRestartGame = () => {
+      restart(false);
+    };
+
+    socket.on("assignSymbol", handleAssignSymbol);
+    socket.on("opponentMove", handleOpponentMove);
+    socket.on("gameFinished", handleGameFinished);
+    socket.on("restartGame", handleRestartGame);
+
+    //cleanup
+    return () => {
+      socket.off("assignSymbol", handleAssignSymbol);
+      socket.off("opponentMove", handleOpponentMove);
+      socket.off("gameFinished", handleGameFinished);
+      socket.off("restartGame", handleRestartGame);
+    };
+  }, [roomId]);
+
+  // HANDLE MOVE
+  const handleOnClick = (r: number, c: number) => {
+    if (!isInRoom) return;
+    if (winner) return;
+    if (currentTurn !== mySymbol) return;
+    if (board[r][c] !== null) return;
+
+    const updated = board.map((row, rIndex) =>
+      row.map((col, cIndex) =>
+        rIndex === r && cIndex === c ? mySymbol : col
+      )
+    );
+
+    setBoard(updated);
+    socket.emit("playerMove", { roomId, board: updated });
+
+    const w = checkWinner(updated);
+    if (w) {
+      setWinner(w);
+      socket.emit("gameOver", { roomId, winner: w });
+      confetti();
+      return;
+    }
+
+    const hasEmpty = updated.some((row) => row.includes(null));
+    if (!hasEmpty) setIsDraw(true);
+  };
+
+  // CREATE / JOIN ROOM
+  const createNewGame = async () => {
+    const token = localStorage.getItem("token");
+    if (!token) return navigate("/login");
+
+    const res = await axios.post(
+      "http://localhost:8080/game/create",
+      {},
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+
+    navigate(`/multiplayer?room=${res.data.roomId}`);
+  };
+
+  const joinGame = () => {
+    const id = prompt("Enter room ID:");
+    if (!id) return;
+    navigate(`/multiplayer?room=${id}`);
+  };
+
+  return (
+    <div className="game">
+      <h1>Multiplayer Tic-Tac-Toe</h1>
+
+      {!roomId && (
+        <>
+          <button onClick={createNewGame}>Create Game</button>
+          <button onClick={joinGame}>Join Game</button>
+          <p>Create or join a match to begin.</p>
+        </>
+      )}
+
+      {roomId && (
+        <>
+          <p>Room ID: <b>{roomId}</b></p>
+
+          <button
+            onClick={() => {
+              navigator.clipboard.writeText(roomId);
+              alert("Room ID copied!");
+            }}
+          >
+            Copy Room ID
+          </button>
+
+          {/* ISPRAVITI */}
+          {!isInRoom && <p>Connecting to room...</p>}
+
+          {isInRoom && (
+            <>
+              <p>You are: <b>{mySymbol}</b></p>
+              <p>Turn: <b>{currentTurn}</b></p>
+
+              <Board board={board} handleClick={handleOnClick} />
+
+              <div className="game-status">
+                {winner && <h2 className="winner-message"> {winner} wins! &#x1F973;</h2>}
+                {isDraw && <h2 className="draw-message">Draw!</h2>}
+              </div>
+
+              <button onClick={() => restart()}>Restart</button>
+            </>
+          )}
+        </>
+      )}
+    </div>
+  );
+};
+
+// CHECK WINNER
 const checkWinner = (board: BoardArray): string | null => {
   const lines = [
-    // Rows
+    //Rows(red)
     [board[0][0], board[0][1], board[0][2]],
     [board[1][0], board[1][1], board[1][2]],
     [board[2][0], board[2][1], board[2][2]],
-    // Columns
+
+    //Columns(kolone)
     [board[0][0], board[1][0], board[2][0]],
     [board[0][1], board[1][1], board[2][1]],
     [board[0][2], board[1][2], board[2][2]],
-    // Diagonals
+
+    //Diagonals
     [board[0][0], board[1][1], board[2][2]],
     [board[0][2], board[1][1], board[2][0]],
   ];
 
   for (const line of lines) {
-    if (line[0] && line[0] === line[1] && line[1] === line[2]) {
-      return line[0];
-    }
+    if (line[0] && line[0] === line[1] && line[1] === line[2]) return line[0];
   }
   return null;
-};
-
-export const TicTacToeMulti = () => {
-  const initialBoard: BoardArray = Array.from({ length: 3 }, () => Array(3).fill(null));
-  const [board, setBoard] = useState<BoardArray>(initialBoard);
-  const [player, setPlayer] = useState<string>('X');
-  const [winner, setWinner] = useState<string | null>(null);
-  const [isNoWinner, setIsNoWinner] = useState<boolean>(false);
-
-  const handleOnClick = (row: number, col: number) => {
-    if (board[row][col] || winner) return;
-
-    const updatedBoard = board.map((r, rowIndex) =>
-      r.map((cell, colIndex) => (rowIndex === row && colIndex === col ? player : cell))
-    );
-    setBoard(updatedBoard);
-
-    const newWinner = checkWinner(updatedBoard);
-    setWinner(newWinner);
-
-    const hasNullValue = updatedBoard.some((r) => r.some((c) => c === null));
-    if (!newWinner && !hasNullValue) {
-      setIsNoWinner(true);
-      return;
-    }
-
-    // Switch player
-    setPlayer(player === 'X' ? 'O' : 'X');
-  };
-
-  const restartGame = () => {
-    setBoard(initialBoard);
-    setPlayer('X');
-    setWinner(null);
-    setIsNoWinner(false);
-  };
-
-  return (
-    <>
-      <div className='game'>
-        <h1> Tic-Tac-Toe LOCAL Multiplayer</h1>
-        <p>Current Turn: {player}</p>
-        <Board board={board} handleClick={handleOnClick} />
-        {winner && <p>{winner} Wins!</p>}
-        {isNoWinner && <p>No one wins</p>}
-        <button className='reset' type='button' onClick={restartGame}>
-          Restart Game
-        </button>
-      </div>
-
-      
-      <button className='newGame' type='button'>
-        Create New Game
-      </button>
-      <button className='joinGame' type='button'>
-        Join Existing Game
-      </button>
-    </>
-  );
 };

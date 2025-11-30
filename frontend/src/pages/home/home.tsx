@@ -7,11 +7,11 @@ export const HomePage: React.FC = () => {
 return (
     <div className="home-container">
       <div className="button-group">
+        <button className="home-button" onClick={() => navigate('/login')}>
+          Login
+        </button>
         <button className="home-button" onClick={() => navigate('/single-player')}>
           Single Player
-        </button>
-        <button className="home-button" onClick={() => navigate('/multiplayer')}>
-          Multiplayer
         </button>
       </div>
     </div>
