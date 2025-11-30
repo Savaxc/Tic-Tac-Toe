@@ -4,8 +4,9 @@ import axios from "axios";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { io } from "socket.io-client";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-//@ts-ignore 
+//@ts-ignore
 import confetti from "https://cdn.skypack.dev/canvas-confetti";
+import { logout } from "../../utils/logout";
 
 const socket = io("http://localhost:8080", { autoConnect: false });
 
@@ -25,6 +26,7 @@ export const TicTacToeMulti = () => {
   const [winner, setWinner] = useState<string | null>(null);
   const [isDraw, setIsDraw] = useState(false);
   const [isInRoom, setIsInRoom] = useState(false);
+  const [showLogoutNotif, setShowLogoutNotif] = useState(false);
 
   // TURN LOGIC
   const getCurrentTurn = (boardState: BoardArray) => {
@@ -90,9 +92,7 @@ export const TicTacToeMulti = () => {
     if (board[r][c] !== null) return;
 
     const updated = board.map((row, rIndex) =>
-      row.map((col, cIndex) =>
-        rIndex === r && cIndex === c ? mySymbol : col
-      )
+      row.map((col, cIndex) => (rIndex === r && cIndex === c ? mySymbol : col))
     );
 
     setBoard(updated);
@@ -124,6 +124,20 @@ export const TicTacToeMulti = () => {
     navigate(`/multiplayer?room=${res.data.roomId}`);
   };
 
+  // LOGOUT
+  const handleLogout = () => {
+    if (socket.connected) {
+      socket.disconnect();
+    }
+
+    setShowLogoutNotif(true);
+
+    //1.5sec timeout to show notif
+    setTimeout(() => {
+      logout();
+    }, 1500);
+  };
+
   const joinGame = () => {
     const id = prompt("Enter room ID:");
     if (!id) return;
@@ -132,7 +146,20 @@ export const TicTacToeMulti = () => {
 
   return (
     <div className="game">
-      <h1>Multiplayer Tic-Tac-Toe</h1>
+      {/* Logout notif*/}
+      {showLogoutNotif && (
+        <div className="logout-notification">
+          <span>👋</span> Logout successfull.
+        </div>
+      )}
+
+      {/* ---  HEADER  --- */}
+      <div className="game-header">
+        <h1>Multiplayer Mode</h1>
+        <button className="logout-btn" onClick={handleLogout}>
+          Logout
+        </button>
+      </div>
 
       {!roomId && (
         <>
@@ -144,7 +171,9 @@ export const TicTacToeMulti = () => {
 
       {roomId && (
         <>
-          <p>Room ID: <b>{roomId}</b></p>
+          <p>
+            Room ID: <b>{roomId}</b>
+          </p>
 
           <button
             onClick={() => {
@@ -160,13 +189,19 @@ export const TicTacToeMulti = () => {
 
           {isInRoom && (
             <>
-              <p>You are: <b>{mySymbol}</b></p>
-              <p>Turn: <b>{currentTurn}</b></p>
+              <p>
+                You are: <b>{mySymbol}</b>
+              </p>
+              <p>
+                Turn: <b>{currentTurn}</b>
+              </p>
 
               <Board board={board} handleClick={handleOnClick} />
 
               <div className="game-status">
-                {winner && <h2 className="winner-message"> {winner} wins! &#x1F973;</h2>}
+                {winner && (
+                  <h2 className="winner-message"> {winner} wins! &#x1F973;</h2>
+                )}
                 {isDraw && <h2 className="draw-message">Draw!</h2>}
               </div>
 

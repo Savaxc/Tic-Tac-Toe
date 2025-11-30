@@ -25,7 +25,7 @@
   transition: background-color 0.2s, color 0.2s;
 }
 
-/*Multiplayer Page*/
+/* MULTIPLAYER PAGE */
 .game-status h2 {
     font-size: 48px;
     font-weight: 800;
@@ -44,4 +44,71 @@
     color: #457b9d; 
     background: #e0f2f7;
     border: 3px solid #457b9d;
+}
+
+/* HEADER  */
+.game-header {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  border-bottom: 1px solid #eee; 
+  padding-bottom: 10px;
+}
+
+.game-header h1 {
+  margin: 0;
+  font-size: 24px;
+}
+
+/* LOGOUT BTN */
+.logout-btn {
+  background-color: #a52d2d;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 5px;
+  font-weight: bold;
+  cursor: pointer;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+  transition: background-color 0.2s, transform 0.1s;
+  font-size: 14px;
+}
+
+.logout-btn:hover {
+  background-color: #cc0000;
+}
+
+.logout-btn:active {
+  transform: scale(0.95);
+}
+
+/* NOTIF (TOAST) */
+.logout-notification {
+  position: fixed;
+  top: 120px;
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: #a52d2d;
+  color: #fff;
+  padding: 12px 24px;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  animation: slideDown 0.3s ease-out;
+}
+
+@keyframes slideDown {
+  from {
+    top: 50px;
+    opacity: 0;
+  }
+  to {
+    top:120px;
+    opacity: 1;
+  }
 }
