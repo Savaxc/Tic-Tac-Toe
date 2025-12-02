@@ -7,6 +7,17 @@ import { io } from "socket.io-client";
 //@ts-ignore
 import confetti from "https://cdn.skypack.dev/canvas-confetti";
 import { logout } from "../../utils/logout";
+import {
+  Snackbar,
+  Alert,
+  IconButton,
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  TextField,
+  DialogActions,
+  Button,
+} from "@mui/material";
 
 const socket = io("http://localhost:8080", { autoConnect: false });
 
@@ -27,6 +38,36 @@ export const TicTacToeMulti = () => {
   const [isDraw, setIsDraw] = useState(false);
   const [isInRoom, setIsInRoom] = useState(false);
   const [showLogoutNotif, setShowLogoutNotif] = useState(false);
+
+  //MUI
+  const [openJoinDialog, setOpenJoinDialog] = useState(false);
+  const [roomInput, setRoomInput] = useState("");
+
+  const [snackbar, setSnackbar] = useState<{
+    open: boolean;
+    message: string;
+    severity: "success" | "error" | "info" | "warning";
+  }>({
+    open: false,
+    message: "",
+    severity: "info",
+  });
+
+  const showSnackbar = (
+    message: string,
+    severity: "success" | "error" | "info" | "warning" = "info"
+  ) => {
+    setSnackbar({ open: true, message, severity });
+  };
+
+  const handleOpenJoinDialog = () => {
+    setRoomInput("");
+    setOpenJoinDialog(true);
+  };
+
+  const handleCloseJoinDialog = () => {
+    setOpenJoinDialog(false);
+  };
 
   // TURN LOGIC
   const getCurrentTurn = (boardState: BoardArray) => {
@@ -76,12 +117,12 @@ export const TicTacToeMulti = () => {
     };
 
     const handleRoomNotFound = () => {
-      alert("Room does not exist!");
+      showSnackbar("Room does not exist!", "error");
       navigate("/multiplayer");
     };
 
     const handleRoomFull = () => {
-      alert("Room is full! Maximum 2 players allowed.");
+      showSnackbar("Room is full! Maximum 2 players allowed.", "warning");
       navigate("/multiplayer");
     };
 
@@ -170,10 +211,16 @@ export const TicTacToeMulti = () => {
     }, 1500);
   };
 
-  const joinGame = () => {
-    const id = prompt("Enter room ID:");
-    if (!id) return;
-    navigate(`/multiplayer?room=${id}`);
+  // const joinGame = () => {
+  //   const id = prompt("Enter room ID:");
+  //   if (!id) return;
+  //   navigate(`/multiplayer?room=${id}`);
+  // };
+
+  const handleJoinRoom = () => {
+    if (!roomInput.trim()) return;
+    navigate(`/multiplayer?room=${roomInput.trim()}`);
+    setOpenJoinDialog(false);
   };
 
   return (
@@ -196,7 +243,7 @@ export const TicTacToeMulti = () => {
       {!roomId && (
         <>
           <button onClick={createNewGame}>Create Game</button>
-          <button onClick={joinGame}>Join Game</button>
+          <button onClick={handleOpenJoinDialog}>Join Game</button>
           <p>Create or join a match to begin.</p>
         </>
       )}
@@ -210,7 +257,7 @@ export const TicTacToeMulti = () => {
           <button
             onClick={() => {
               navigator.clipboard.writeText(roomId);
-              alert("Room ID copied!");
+              showSnackbar("Room ID copied!", "success");
             }}
           >
             Copy Room ID
@@ -242,6 +289,123 @@ export const TicTacToeMulti = () => {
           )}
         </>
       )}
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={3000}
+        onClose={() => setSnackbar({ ...snackbar, open: false })}
+        anchorOrigin={{ vertical: "top", horizontal: "center" }}
+      >
+        <Alert
+          onClose={() => setSnackbar({ ...snackbar, open: false })}
+          severity={snackbar.severity}
+          sx={{
+            width: "100%",
+            fontWeight: "bold",
+            borderRadius: "12px",
+            boxShadow: "0 4px 20px rgba(0,0,0,0.3)",
+            position: "relative",
+            px: 3,
+            py: 1.5,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+          action={
+            <IconButton
+              aria-label="close"
+              size="small"
+              onClick={() => setSnackbar({ ...snackbar, open: false })}
+              sx={{
+                position: "absolute",
+                top: -5,
+                right: 5,
+                color: "inherit",
+              }}
+            >
+              ✖
+            </IconButton>
+          }
+        >
+          <span style={{ flex: 1, textAlign: "center" }}>
+            {snackbar.message}
+          </span>
+        </Alert>
+      </Snackbar>
+
+      <Dialog
+        open={openJoinDialog}
+        onClose={handleCloseJoinDialog}
+        disableEnforceFocus
+        disableRestoreFocus
+        sx={{
+          "& .MuiDialog-paper": {
+            borderRadius: "10px",
+            boxShadow: "0 8px 30px rgba(0, 0, 0, 0.1)",
+            padding: "10px",
+            minWidth: { xs: "90%", sm: "350px" },
+          },
+        }}
+      >
+        <DialogTitle
+          sx={{
+            textAlign: "center",
+            fontSize: "1.4rem",
+            fontWeight: 600,
+            paddingBottom: "8px",
+          }}
+        >
+          Enter Room ID
+        </DialogTitle>
+
+        <DialogContent
+          sx={{
+            paddingX: "20px",
+            paddingY: "10px !important",
+          }}
+        >
+          <TextField
+            autoFocus
+            margin="dense"
+            type="text"
+            fullWidth
+            variant="outlined"
+            size="small"
+            value={roomInput}
+            onChange={(e) => setRoomInput(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && handleJoinRoom()}
+            sx={{
+              "& .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline":
+                {
+                  borderColor: "#1976d2",
+                  borderWidth: "1px",
+                },
+            }}
+          />
+        </DialogContent>
+
+        <DialogActions
+          sx={{
+            padding: "16px 20px",
+            justifyContent: "flex-end",
+            borderTop: "1px solid #eee",
+          }}
+        >
+          <Button onClick={handleCloseJoinDialog} sx={{ color: "#666" }}>
+            Cancel
+          </Button>
+          <Button
+            onClick={handleJoinRoom}
+            variant="contained"
+            disableElevation
+            sx={{
+              borderRadius: "7px",
+              fontWeight: 550,
+            }}
+          >
+            Join
+          </Button>
+        </DialogActions>
+      </Dialog>
     </div>
   );
 };
