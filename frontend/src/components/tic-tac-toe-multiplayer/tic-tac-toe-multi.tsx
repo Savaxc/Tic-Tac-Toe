@@ -75,10 +75,22 @@ export const TicTacToeMulti = () => {
       restart(false);
     };
 
+    const handleRoomNotFound = () => {
+      alert("Room does not exist!");
+      navigate("/multiplayer");
+    };
+
+    const handleRoomFull = () => {
+      alert("Room is full! Maximum 2 players allowed.");
+      navigate("/multiplayer");
+    };
+
     socket.on("assignSymbol", handleAssignSymbol);
     socket.on("opponentMove", handleOpponentMove);
     socket.on("gameFinished", handleGameFinished);
     socket.on("restartGame", handleRestartGame);
+    socket.on("roomNotFound", handleRoomNotFound);
+    socket.on("roomFull", handleRoomFull);
 
     //cleanup
     return () => {
@@ -86,6 +98,8 @@ export const TicTacToeMulti = () => {
       socket.off("opponentMove", handleOpponentMove);
       socket.off("gameFinished", handleGameFinished);
       socket.off("restartGame", handleRestartGame);
+      socket.off("roomNotFound", handleRoomNotFound);
+      socket.off("roomFull", handleRoomFull);
     };
   }, [roomId]);
 
@@ -113,10 +127,10 @@ export const TicTacToeMulti = () => {
 
     //Draw result check
     const hasEmpty = updated.some((row) => row.includes(null));
-      if (!hasEmpty) {
-        setIsDraw(true);
-        socket.emit("gameOver", { roomId, winner: null }); 
-      }
+    if (!hasEmpty) {
+      setIsDraw(true);
+      socket.emit("gameOver", { roomId, winner: null });
+    }
   };
 
   // CREATE / JOIN ROOM
@@ -131,6 +145,15 @@ export const TicTacToeMulti = () => {
     );
 
     navigate(`/multiplayer?room=${res.data.roomId}`);
+
+    const newRoomId = res.data.roomId;
+
+    // connect socket if needed
+    if (!socket.connected) socket.connect();
+
+    socket.emit("createRoom", newRoomId);
+
+    navigate(`/multiplayer?room=${newRoomId}`);
   };
 
   // LOGOUT
