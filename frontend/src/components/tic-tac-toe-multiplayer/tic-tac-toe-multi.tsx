@@ -62,8 +62,13 @@ export const TicTacToeMulti = () => {
       setBoard(newBoard);
     };
 
+    //on GameFinished set draw or winner
     const handleGameFinished = (winner: string | null) => {
-      setWinner(winner);
+      if (winner === null) {
+        setIsDraw(true);
+      } else {
+        setWinner(winner);
+      }
     };
 
     const handleRestartGame = () => {
@@ -106,8 +111,12 @@ export const TicTacToeMulti = () => {
       return;
     }
 
+    //Draw result check
     const hasEmpty = updated.some((row) => row.includes(null));
-    if (!hasEmpty) setIsDraw(true);
+      if (!hasEmpty) {
+        setIsDraw(true);
+        socket.emit("gameOver", { roomId, winner: null }); 
+      }
   };
 
   // CREATE / JOIN ROOM
