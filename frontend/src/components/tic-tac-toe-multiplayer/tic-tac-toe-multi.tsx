@@ -18,10 +18,33 @@ import {
   DialogActions,
   Button,
 } from "@mui/material";
+import CircularProgress from "@mui/material/CircularProgress";
+//Generate SessionId
+// const generateSessionId = () => {
+//   let id = localStorage.getItem("sessionId");
+//   if (!id) {
+//     id = crypto.randomUUID();
+//     localStorage.setItem("sessionId", id);
+//   }
+//   return id;
+// };
 
 const socket = io("http://localhost:8080", { autoConnect: false });
 
+socket.on("connect", () => {
+  const sessionId = localStorage.getItem("sessionId");
+
+  if (sessionId) {
+    socket.emit("registerSession", sessionId);
+  }
+});
+
 type BoardArray = Array<Array<string | null>>;
+
+interface GameHistory {
+  moves: BoardArray[];
+  players: { X?: string; O?: string };
+}
 
 export const TicTacToeMulti = () => {
   const navigate = useNavigate();
@@ -39,9 +62,19 @@ export const TicTacToeMulti = () => {
   const [isInRoom, setIsInRoom] = useState(false);
   const [showLogoutNotif, setShowLogoutNotif] = useState(false);
 
+  //state for histpry modal
+  const [openHistoryDialog, setOpenHistoryDialog] = useState(false);
+  const [historyMoves, setHistoryMoves] = useState<BoardArray[]>([]);
+  const [historyIndex, setHistoryIndex] = useState(0);
+
   //MUI
   const [openJoinDialog, setOpenJoinDialog] = useState(false);
   const [roomInput, setRoomInput] = useState("");
+  const [openExitModal, setOpenExitModal] = useState(false);
+
+  //DISCONNECT PLAYERS INFO
+  const [opponentLeft, setOpponentLeft] = useState(false);
+  const [waitingForOpponent, setWaitingForOpponent] = useState(false);
 
   const [snackbar, setSnackbar] = useState<{
     open: boolean;
@@ -69,6 +102,42 @@ export const TicTacToeMulti = () => {
     setOpenJoinDialog(false);
   };
 
+  //FUNCIJA ZA OTVARANJE ISTORIJE
+  const handleOpenHistory = () => {
+    if (!roomId) return;
+
+    socket.emit("getGameHistory", roomId, (history: GameHistory | null) => {
+      if (history && history.moves.length > 0) {
+        setHistoryMoves(history.moves);
+        setHistoryIndex(0);
+        setOpenHistoryDialog(true);
+      } else {
+        showSnackbar("No game history available!", "info");
+      }
+    });
+  };
+
+  const handleCloseHistory = () => {
+    setOpenHistoryDialog(false);
+  };
+
+  const handlePrevMove = () => {
+    setHistoryIndex((prev) => Math.max(prev - 1, 0));
+  };
+
+  const handleNextMove = () => {
+    setHistoryIndex((prev) => Math.min(prev + 1, historyMoves.length - 1));
+  };
+
+  const getHistoryResult = () => {
+    if (!historyMoves.length) return null;
+
+    const finalWinner = winner;
+    if (!finalWinner) return "Draw!";
+    if (finalWinner === mySymbol) return "You won!";
+    return "You lost!";
+  };
+
   // TURN LOGIC
   const getCurrentTurn = (boardState: BoardArray) => {
     const moves = boardState.flat().filter(Boolean).length;
@@ -89,11 +158,34 @@ export const TicTacToeMulti = () => {
   useEffect(() => {
     if (!roomId) return;
 
-    // ensure connected
-    if (!socket.connected) socket.connect();
+    const joinRoomSafely = () => {
+      console.log("JOINING ROOM:", roomId);
+      socket.emit("joinRoom", roomId);
+    };
 
-    socket.emit("joinRoom", roomId);
+    // Ako nije povezan — poveyi se i sacekaj connect event
+    if (!socket.connected) {
+      socket.connect();
+      const sessionId = localStorage.getItem("sessionId");
+      if (sessionId) {
+        socket.emit("registerSession", sessionId);
+      }
 
+      socket.once("connect", () => {
+        console.log("Socket connected -> joining room");
+        joinRoomSafely();
+      });
+    } else {
+      // socket.connected može biti TRUE,
+      // ali server još nije u potpunosti registrovao socket.
+      //
+      // Short async delay rešava taj race condition 100%.
+      setTimeout(() => {
+        joinRoomSafely();
+      }, 10);
+    }
+
+    //handlers
     const handleAssignSymbol = (symbol: "X" | "O") => {
       setMySymbol(symbol);
       setIsInRoom(true);
@@ -126,12 +218,27 @@ export const TicTacToeMulti = () => {
       navigate("/multiplayer");
     };
 
+    const handleOpponentConnected = () => {
+      setOpponentLeft(false);
+      setWaitingForOpponent(false);
+      showSnackbar("Opponent connected!", "success");
+    };
+
+    const handleOpponentLeft = () => {
+      setOpponentLeft(true);
+      setWaitingForOpponent(true);
+      showSnackbar("Opponent left the game!", "warning");
+    };
+
+    // event listeners
     socket.on("assignSymbol", handleAssignSymbol);
     socket.on("opponentMove", handleOpponentMove);
     socket.on("gameFinished", handleGameFinished);
     socket.on("restartGame", handleRestartGame);
     socket.on("roomNotFound", handleRoomNotFound);
     socket.on("roomFull", handleRoomFull);
+    socket.on("opponentConnected", handleOpponentConnected);
+    socket.on("opponentLeft", handleOpponentLeft);
 
     //cleanup
     return () => {
@@ -141,6 +248,8 @@ export const TicTacToeMulti = () => {
       socket.off("restartGame", handleRestartGame);
       socket.off("roomNotFound", handleRoomNotFound);
       socket.off("roomFull", handleRoomFull);
+      socket.off("opponentConnected", handleOpponentConnected);
+      socket.off("opponentLeft", handleOpponentLeft);
     };
   }, [roomId]);
 
@@ -174,10 +283,31 @@ export const TicTacToeMulti = () => {
     }
   };
 
+  //socket povezan pre emitovanja
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const socketEmitSafe = (event: string, data?: any) => {
+    return new Promise<void>((resolve) => {
+      if (socket.connected) {
+        socket.emit(event, data);
+        return resolve();
+      }
+      socket.once("connect", () => {
+        socket.emit(event, data);
+        resolve();
+      });
+      socket.connect();
+    });
+  };
+
   // CREATE / JOIN ROOM
   const createNewGame = async () => {
     const token = localStorage.getItem("token");
+    const sessionId = localStorage.getItem("sessionId");
     if (!token) return navigate("/login");
+    if (!sessionId) {
+      alert("Session not initialized yet!");
+      return navigate("/login");
+    }
 
     const res = await axios.post(
       "http://localhost:8080/game/create",
@@ -185,14 +315,13 @@ export const TicTacToeMulti = () => {
       { headers: { Authorization: `Bearer ${token}` } }
     );
 
-    navigate(`/multiplayer?room=${res.data.roomId}`);
+    // navigate(`/multiplayer?room=${res.data.roomId}`);
 
     const newRoomId = res.data.roomId;
 
-    // connect socket if needed
-    if (!socket.connected) socket.connect();
-
-    socket.emit("createRoom", newRoomId);
+    // safe connect socket
+    await socketEmitSafe("createRoom", newRoomId);
+    setWaitingForOpponent(true);
 
     navigate(`/multiplayer?room=${newRoomId}`);
   };
@@ -211,16 +340,20 @@ export const TicTacToeMulti = () => {
     }, 1500);
   };
 
-  // const joinGame = () => {
-  //   const id = prompt("Enter room ID:");
-  //   if (!id) return;
-  //   navigate(`/multiplayer?room=${id}`);
-  // };
-
   const handleJoinRoom = () => {
     if (!roomInput.trim()) return;
     navigate(`/multiplayer?room=${roomInput.trim()}`);
     setOpenJoinDialog(false);
+    showSnackbar("You connected!", "success");
+  };
+
+  //EXIT GAME
+  const handleExitGame = () => {
+    setOpenExitModal(false);
+
+    socket.emit("exitGame");
+    socket.disconnect();
+    navigate("/multiplayer");
   };
 
   return (
@@ -232,12 +365,18 @@ export const TicTacToeMulti = () => {
         </div>
       )}
 
-      {/* ---  HEADER  --- */}
+      {/* HEADER */}
       <div className="game-header">
         <h1>Multiplayer Mode</h1>
         <button className="logout-btn" onClick={handleLogout}>
           Logout
         </button>
+
+        {opponentLeft && (
+          <p style={{ color: "red", fontWeight: "bold", marginBottom: "10px" }}>
+            Opponent left the match!
+          </p>
+        )}
       </div>
 
       {!roomId && (
@@ -254,19 +393,60 @@ export const TicTacToeMulti = () => {
             Room ID: <b>{roomId}</b>
           </p>
 
-          <button
-            onClick={() => {
-              navigator.clipboard.writeText(roomId);
-              showSnackbar("Room ID copied!", "success");
-            }}
-          >
-            Copy Room ID
-          </button>
+          <div className="game-controls">
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(roomId);
+                showSnackbar("Room ID copied!", "success");
+              }}
+              className="control-btn"
+            >
+              Copy Room ID
+            </button>
 
-          {/* ISPRAVITI */}
-          {!isInRoom && <p>Connecting to room...</p>}
+            <Button
+              onClick={handleOpenHistory}
+              variant="outlined"
+              className="control-btn"
+            >
+              View History
+            </Button>
 
-          {isInRoom && (
+            <Button
+              variant="contained"
+              color="error"
+              className="control-btn"
+              onClick={() => setOpenExitModal(true)}
+            >
+              Exit Game
+            </Button>
+          </div>
+
+          {!isInRoom || waitingForOpponent ? (
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                marginTop: "10px",
+                padding: "30px",
+                minHeight: "100px",
+              }}
+            >
+              <p
+                style={{
+                  marginBottom: "15px",
+                  fontWeight: "bold",
+                  fontSize: "1.2em",
+                }}
+              >
+                {!isInRoom ? "Connecting to room..." : "Waiting for opponent…"}
+              </p>
+              {(waitingForOpponent || !isInRoom) && <CircularProgress />}
+            </div>
+          ) : (
+            // Ako smo u sobi i protivnik je povezan, prikayi igru (tablu)
             <>
               <p>
                 You are: <b>{mySymbol}</b>
@@ -403,6 +583,108 @@ export const TicTacToeMulti = () => {
             }}
           >
             Join
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Game History for Game */}
+      <Dialog
+        open={openHistoryDialog}
+        onClose={handleCloseHistory}
+        disableEnforceFocus
+        disableRestoreFocus
+        fullWidth
+        maxWidth="xs"
+      >
+        <DialogTitle textAlign="center">Game History</DialogTitle>
+
+        <DialogContent
+          sx={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+          }}
+        >
+          {historyMoves.length > 0 && (
+            <>
+              <Board
+                board={historyMoves[historyIndex]}
+                handleClick={() => {}}
+              />
+              <p>
+                Move {historyIndex + 1} / {historyMoves.length}
+              </p>
+              {historyIndex === historyMoves.length - 1 && (
+                <p style={{ fontWeight: "bold", marginTop: "8px" }}>
+                  {getHistoryResult()}
+                </p>
+              )}
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  width: "100%",
+                  marginTop: "8px",
+                }}
+              >
+                <Button onClick={handlePrevMove} disabled={historyIndex === 0}>
+                  Prev
+                </Button>
+                <Button
+                  onClick={handleNextMove}
+                  disabled={historyIndex === historyMoves.length - 1}
+                >
+                  Next
+                </Button>
+              </div>
+            </>
+          )}
+        </DialogContent>
+
+        <DialogActions>
+          <Button onClick={handleCloseHistory}>Close</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* EXIT GAME MODAL */}
+      <Dialog
+        open={openExitModal}
+        onClose={() => setOpenExitModal(false)}
+        maxWidth="xs"
+        fullWidth
+        sx={{
+          "& .MuiDialog-paper": {
+            borderRadius: "12px",
+            padding: "8px",
+          },
+        }}
+      >
+        <DialogTitle sx={{ textAlign: "center", fontWeight: 700 }}>
+          Exit Game?
+        </DialogTitle>
+
+        <DialogContent sx={{ textAlign: "center", paddingBottom: "8px" }}>
+          <p>Are you sure you want to leave this match?</p>
+        </DialogContent>
+
+        <DialogActions sx={{ justifyContent: "center", pb: 2, gap: 2 }}>
+          <Button
+            variant="outlined"
+            onClick={() => setOpenExitModal(false)}
+            sx={{ borderRadius: "8px" }}
+          >
+            Cancel
+          </Button>
+
+          <Button
+            variant="contained"
+            color="error"
+            sx={{ borderRadius: "8px" }}
+            onClick={() => {
+              handleExitGame();
+            }}
+          >
+            Exit
           </Button>
         </DialogActions>
       </Dialog>

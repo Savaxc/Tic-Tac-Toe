@@ -26,6 +26,10 @@ export const LoginPage = () => {
 
       localStorage.setItem("token", res.data.token);
 
+      // generate new sessionID on login
+      const sessionId = crypto.randomUUID();
+      localStorage.setItem("sessionId", sessionId);
+
       navigate("/multiplayer");
     } catch (err: any) {
       if (err.response) setError(err.response.data.message);
