@@ -405,14 +405,6 @@ export const TicTacToeMulti = () => {
             </button>
 
             <Button
-              onClick={handleOpenHistory}
-              variant="outlined"
-              className="control-btn"
-            >
-              View History
-            </Button>
-
-            <Button
               variant="contained"
               color="error"
               className="control-btn"
@@ -464,7 +456,24 @@ export const TicTacToeMulti = () => {
                 {isDraw && <h2 className="draw-message">Draw!</h2>}
               </div>
 
-              <button onClick={() => restart()}>Restart</button>
+              {/* <button onClick={() => restart()}>Restart</button> */}
+              <div className="action-buttons">
+                <Button
+                  onClick={handleOpenHistory}
+                  variant="outlined"
+                  className="control-btn"
+                >
+                  View History
+                </Button>
+
+                <Button
+                  variant="outlined"
+                  onClick={() => restart(true)}
+                  className="restart-btn"
+                >
+                  Restart Game
+                </Button>
+              </div>
             </>
           )}
         </>

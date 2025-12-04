@@ -125,3 +125,18 @@
 .control-btn {
   min-width: 140px;
 }
+
+
+.action-buttons {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.restart-btn,
+.exit-btn {
+  width: 160px;
+}
+
