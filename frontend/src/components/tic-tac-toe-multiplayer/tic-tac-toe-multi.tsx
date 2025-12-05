@@ -73,7 +73,7 @@ export const TicTacToeMulti = () => {
   const [openExitModal, setOpenExitModal] = useState(false);
 
   //DISCONNECT PLAYERS INFO
-  const [opponentLeft, setOpponentLeft] = useState(false);
+  const [, setOpponentLeft] = useState(false);
   const [waitingForOpponent, setWaitingForOpponent] = useState(false);
 
   const [snackbar, setSnackbar] = useState<{
@@ -371,25 +371,29 @@ export const TicTacToeMulti = () => {
         <button className="logout-btn" onClick={handleLogout}>
           Logout
         </button>
-
-        {opponentLeft && (
-          <p style={{ color: "red", fontWeight: "bold", marginBottom: "10px" }}>
-            Opponent left the match!
-          </p>
-        )}
       </div>
 
       {!roomId && (
         <>
           <button onClick={createNewGame}>Create Game</button>
           <button onClick={handleOpenJoinDialog}>Join Game</button>
-          <p>Create or join a match to begin.</p>
+          <p
+            style={{
+              fontSize: "25px",
+            }}
+          >
+            Create or join a match to begin.
+          </p>
         </>
       )}
 
       {roomId && (
         <>
-          <p>
+          <p
+            style={{
+              fontSize: "18px",
+            }}
+          >
             Room ID: <b>{roomId}</b>
           </p>
 
@@ -668,11 +672,11 @@ export const TicTacToeMulti = () => {
           },
         }}
       >
-        <DialogTitle sx={{ textAlign: "center", fontWeight: 700 }}>
+        <DialogTitle sx={{ textAlign: "center", fontWeight: 700, fontSize: "25px" }}>
           Exit Game?
         </DialogTitle>
 
-        <DialogContent sx={{ textAlign: "center", paddingBottom: "8px" }}>
+        <DialogContent sx={{ textAlign: "center", paddingBottom: "8px", fontSize:"20px" }}>
           <p>Are you sure you want to leave this match?</p>
         </DialogContent>
 
