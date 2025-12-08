@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import "./auth.css";
@@ -13,6 +13,14 @@ export const LoginPage = () => {
   });
 
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+
+    if (token) {
+      navigate("/multiplayer");
+    }
+  }, [navigate]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setForm({ ...form, [e.target.name]: e.target.value });
@@ -59,7 +67,7 @@ export const LoginPage = () => {
       <button onClick={handleLogin}>Login</button>
 
       <button onClick={() => navigate("/register")}>Create new account</button>
-      
+
       {error && <p style={{ color: "red" }}>{error}</p>}
     </div>
   );

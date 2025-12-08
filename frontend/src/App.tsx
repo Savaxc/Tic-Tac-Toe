@@ -1,41 +1,57 @@
 import "./App.css";
 import { TicTacToe } from "./components/tic-tac-toe/tic-tac-toe";
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import {
+  BrowserRouter as Router,
+  Routes,
+  Route,
+  useNavigate,
+} from "react-router-dom";
 import { HomePage } from "./pages/home/home";
 import { TicTacToeMulti } from "./components/tic-tac-toe-multiplayer/tic-tac-toe-multi";
 import { LoginPage } from "./pages/auth/login";
 import { RegisterPage } from "./pages/auth/register";
 import { ProtectedRoute } from "./components/routes/ProtectedRoute";
 
-function App() {
+function AppHeader() {
+  const navigate = useNavigate();
 
   return (
-		<div className='App'>
-			<header className='App-header'>
-				<h2>
-					Tic-Tac-Toe
-				</h2>
-			</header>
-			<main>
-        <Router>
+    <header className="App-header">
+      <h2 onClick={() => navigate("/")} className="header-title header-title hover-underline">
+        Tic-Tac-Toe
+      </h2>
+    </header>
+  );
+}
+
+
+function App() {
+  return (
+    <div className="App">
+      <Router>
+        <AppHeader />
+
+        <main>
           <Routes>
             <Route path="/" element={<HomePage />} />
             <Route path="/single-player" element={<TicTacToe />} />
-						<Route
-							path="/multiplayer"
-							element={
-								<ProtectedRoute>
-									<TicTacToeMulti />
-								</ProtectedRoute>
-							}
-						/>						
-						<Route path="/login" element={<LoginPage />} />
-						<Route path="/register" element={<RegisterPage />} />
+
+            <Route
+              path="/multiplayer"
+              element={
+                <ProtectedRoute>
+                  <TicTacToeMulti />
+                </ProtectedRoute>
+              }
+            />
+
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/register" element={<RegisterPage />} />
           </Routes>
-        </Router>
-			</main>
-		</div>
-	);
+        </main>
+      </Router>
+    </div>
+  );
 }
 
-export default App
+export default App;
