@@ -76,6 +76,9 @@ export const TicTacToeMulti = () => {
   const [, setOpponentLeft] = useState(false);
   const [waitingForOpponent, setWaitingForOpponent] = useState(false);
 
+  //Color Board Winner
+  const winningCells = winner ? getWinningCells(board) : [];
+
   const [snackbar, setSnackbar] = useState<{
     open: boolean;
     message: string;
@@ -131,8 +134,8 @@ export const TicTacToeMulti = () => {
 
   const getHistoryResult = () => {
     if (!historyMoves.length) return null;
-
-    const finalWinner = winner;
+    const lastBoard = historyMoves[historyMoves.length - 1];
+    const finalWinner = checkWinner(lastBoard);
     if (!finalWinner) return "Draw!";
     if (finalWinner === mySymbol) return "You won!";
     return "You lost!";
@@ -166,20 +169,12 @@ export const TicTacToeMulti = () => {
     // Ako nije povezan — poveyi se i sacekaj connect event
     if (!socket.connected) {
       socket.connect();
-      const sessionId = localStorage.getItem("sessionId");
-      if (sessionId) {
-        socket.emit("registerSession", sessionId);
-      }
-
       socket.once("connect", () => {
-        console.log("Socket connected -> joining room");
+        const sessionId = localStorage.getItem("sessionId");
+        if (sessionId) socket.emit("registerSession", sessionId);
         joinRoomSafely();
       });
     } else {
-      // socket.connected može biti TRUE,
-      // ali server još nije u potpunosti registrovao socket.
-      //
-      // Short async delay rešava taj race condition 100%.
       setTimeout(() => {
         joinRoomSafely();
       }, 10);
@@ -451,7 +446,11 @@ export const TicTacToeMulti = () => {
                 Turn: <b>{currentTurn}</b>
               </p>
 
-              <Board board={board} handleClick={handleOnClick} />
+              <Board
+                board={board}
+                handleClick={handleOnClick}
+                winningCells={winningCells}
+              />
 
               <div className="game-status">
                 {winner && (
@@ -672,11 +671,15 @@ export const TicTacToeMulti = () => {
           },
         }}
       >
-        <DialogTitle sx={{ textAlign: "center", fontWeight: 700, fontSize: "25px" }}>
+        <DialogTitle
+          sx={{ textAlign: "center", fontWeight: 700, fontSize: "25px" }}
+        >
           Exit Game?
         </DialogTitle>
 
-        <DialogContent sx={{ textAlign: "center", paddingBottom: "8px", fontSize:"20px" }}>
+        <DialogContent
+          sx={{ textAlign: "center", paddingBottom: "8px", fontSize: "20px" }}
+        >
           <p>Are you sure you want to leave this match?</p>
         </DialogContent>
 
@@ -727,4 +730,64 @@ const checkWinner = (board: BoardArray): string | null => {
     if (line[0] && line[0] === line[1] && line[1] === line[2]) return line[0];
   }
   return null;
+};
+
+const getWinningCells = (board: BoardArray): [number, number][] => {
+  const lines: [number, number][][] = [
+    // Rows
+    [
+      [0, 0],
+      [0, 1],
+      [0, 2],
+    ],
+    [
+      [1, 0],
+      [1, 1],
+      [1, 2],
+    ],
+    [
+      [2, 0],
+      [2, 1],
+      [2, 2],
+    ],
+    // Columns
+    [
+      [0, 0],
+      [1, 0],
+      [2, 0],
+    ],
+    [
+      [0, 1],
+      [1, 1],
+      [2, 1],
+    ],
+    [
+      [0, 2],
+      [1, 2],
+      [2, 2],
+    ],
+    // Diagonals
+    [
+      [0, 0],
+      [1, 1],
+      [2, 2],
+    ],
+    [
+      [0, 2],
+      [1, 1],
+      [2, 0],
+    ],
+  ];
+
+  for (const line of lines) {
+    const [a, b, c] = line;
+    if (
+      board[a[0]][a[1]] &&
+      board[a[0]][a[1]] === board[b[0]][b[1]] &&
+      board[a[0]][a[1]] === board[c[0]][c[1]]
+    ) {
+      return line;
+    }
+  }
+  return [];
 };
