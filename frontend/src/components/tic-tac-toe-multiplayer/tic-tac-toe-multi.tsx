@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import useSFX from "../../hooks/useSFX";
 import { Board } from "../board/board";
 import axios from "axios";
 import { useNavigate, useSearchParams } from "react-router-dom";
@@ -79,6 +80,12 @@ export const TicTacToeMulti = () => {
   //Color Board Winner
   const winningCells = winner ? getWinningCells(board) : [];
 
+  //Symbol shange
+  const [prevSymbol, setPrevSymbol] = useState<"X" | "O">("O");
+
+  //useSFX sounds
+  const { playSoundEffect } = useSFX();
+
   const [snackbar, setSnackbar] = useState<{
     open: boolean;
     message: string;
@@ -150,11 +157,15 @@ export const TicTacToeMulti = () => {
 
   // RESTART
   const restart = (emitToServer = true) => {
+    const newSymbol = prevSymbol === "X" ? "O" : "X";
+    setMySymbol(newSymbol);
+    setPrevSymbol(newSymbol);
+
     setBoard(emptyBoard);
     setWinner(null);
     setIsDraw(false);
 
-    if (emitToServer) socket.emit("restartGame", { roomId });
+    if (emitToServer && roomId) socket.emit("restartGame", { roomId });
   };
 
   // SOCKET: JOIN ROOM ON LOAD
@@ -194,8 +205,13 @@ export const TicTacToeMulti = () => {
     const handleGameFinished = (winner: string | null) => {
       if (winner === null) {
         setIsDraw(true);
+        playSoundEffect("GAME_OVER");
       } else {
         setWinner(winner);
+
+        if (winner !== mySymbol) {
+          playSoundEffect("GAME_OVER");
+        }
       }
     };
 
@@ -266,6 +282,11 @@ export const TicTacToeMulti = () => {
     if (w) {
       setWinner(w);
       socket.emit("gameOver", { roomId, winner: w });
+
+      if (w === mySymbol) {
+        playSoundEffect("GAME_WIN");
+      }
+
       confetti();
       return;
     }
@@ -313,6 +334,11 @@ export const TicTacToeMulti = () => {
     // navigate(`/multiplayer?room=${res.data.roomId}`);
 
     const newRoomId = res.data.roomId;
+
+    //symbol change
+    const newSymbol = prevSymbol === "X" ? "O" : "X";
+    setMySymbol(newSymbol);
+    setPrevSymbol(newSymbol);
 
     // safe connect socket
     await socketEmitSafe("createRoom", newRoomId);
