@@ -186,4 +186,49 @@
   margin-top: 10px;
 }
 
+.board-wrapper {
+  transition: transform 0.35s ease, box-shadow 0.35s ease;
+}
+
+
+.board-wrapper.locked {
+  pointer-events: none;
+  opacity: 0.6;
+  filter: grayscale(40%);
+  transition: opacity 0.3s ease;
+  position: relative;
+  transform: scale(0.96);
+  box-shadow: 0 0 0 rgba(0, 0, 0, 0);
+}
+
+.board-wrapper.locked::after {
+  content: "Restart pending...";
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  font-size: 1.5rem;
+  font-weight: bold;
+  color: #7fbce9;
+  pointer-events: none;
+}
+
+@keyframes pendingPulse {
+  0% {
+    transform: scale(0.96);
+  }
+  50% {
+    transform: scale(0.98);
+  }
+  100% {
+    transform: scale(0.96);
+  }
+}
+
+.board-wrapper.locked {
+  animation: pendingPulse 1.8s ease-in-out infinite;
+}
+
 

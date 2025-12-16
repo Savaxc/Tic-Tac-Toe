@@ -248,20 +248,18 @@ export const TicTacToeMulti = () => {
 
       if (newSymbol !== mySymbol) {
         setAnimateSymbol(true);
-        setShowSidesSwapped(true); // ✨ Pokaži tekst
+        setShowSidesSwapped(true);
 
         setTimeout(() => {
           setAnimateSymbol(false);
-          setShowSidesSwapped(false); // ✨ Sakrij tekst
-        }, 1000); // trajanje animacije
+          setShowSidesSwapped(false);
+        }, 1000);
       }
 
       setMySymbol(newSymbol);
-
       setBoard(emptyBoard);
       setWinner(null);
       setIsDraw(false);
-
       setRestartRequested(false);
       setRestartVotes(0);
       setRestartCountdown(null);
@@ -335,6 +333,7 @@ export const TicTacToeMulti = () => {
   //RESTART REQUEST(CONFIRM/CANCEL)
   const requestRestart = () => {
     socket.emit("requestRestart", roomId);
+    setIVotedRestart(true);
   };
 
   const cancelRestart = () => {
@@ -343,6 +342,7 @@ export const TicTacToeMulti = () => {
 
   // HANDLE MOVE
   const handleOnClick = (r: number, c: number) => {
+    if (restartRequested) return;
     if (!isInRoom) return;
     if (winner) return;
     if (currentTurn !== mySymbol) return;
@@ -556,12 +556,6 @@ export const TicTacToeMulti = () => {
                 Turn: <b>{currentTurn}</b>
               </p>
 
-              {restartRequested && (
-                <p style={{ fontWeight: "bold", color: "#ff9800" }}>
-                  Waiting for opponent to confirm restart…
-                </p>
-              )}
-
               {restartVotes > 0 && (
                 <p
                   style={{ fontSize: "17px", color: "red", fontWeight: "bold" }}
@@ -570,11 +564,53 @@ export const TicTacToeMulti = () => {
                 </p>
               )}
 
-              <Board
-                board={board}
-                handleClick={handleOnClick}
-                winningCells={winningCells}
-              />
+              {restartRequested && (
+                <div style={{ marginTop: "10px",marginBottom:"10px", textAlign: "center" }}>
+                  <p style={{ fontWeight: "bold", color: "#ff9800" }}>
+                    ⏳{restartCountdown}s
+                  </p>
+
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: "10px",
+                      justifyContent: "center",
+                    }}
+                  >
+                    {/* first player - samo Cancel */}
+                    {iVotedRestart ? (
+                      <Button
+                        variant="contained"
+                        color="warning"
+                        size="small"
+                        onClick={cancelRestart}
+                      >
+                        Cancel
+                      </Button>
+                    ) : (
+                      /* second player - samo Confirm */
+                      <Button
+                        variant="contained"
+                        color="success"
+                        size="small"
+                        onClick={requestRestart}
+                      >
+                        Confirm Restart
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              <div
+                className={`board-wrapper ${restartRequested ? "locked" : ""}`}
+              >
+                <Board
+                  board={board}
+                  handleClick={handleOnClick}
+                  winningCells={winningCells}
+                />
+              </div>
 
               <div className="game-status">
                 {winner && (
@@ -598,35 +634,8 @@ export const TicTacToeMulti = () => {
                   onClick={requestRestart}
                   disabled={iVotedRestart}
                 >
-                  {restartRequested && !iVotedRestart
-                    ? "Confirm Restart"
-                    : "Restart Game"}
+                  Restart Game
                 </Button>
-
-                {restartRequested && (
-                  <div style={{ marginTop: "10px", textAlign: "center" }}>
-                    <p style={{ fontWeight: "bold", color: "#ff9800" }}>
-                      Restart in {restartCountdown}s
-                    </p>
-
-                    <div
-                      style={{
-                        display: "flex",
-                        gap: "10px",
-                        justifyContent: "center",
-                      }}
-                    >
-                      <Button
-                        variant="contained"
-                        color="warning"
-                        size="small"
-                        onClick={cancelRestart}
-                      >
-                        Cancel
-                      </Button>
-                    </div>
-                  </div>
-                )}
               </div>
             </>
           )}

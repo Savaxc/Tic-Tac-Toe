@@ -147,26 +147,25 @@ export const initGameSocket = (io: Server) => {
 
       history.restartVotes.add(sessionId);
 
+      // Start countdown if first vote
       if (history.restartVotes.size === 1) {
         history.countdown = 10;
-
         io.to(roomId).emit("restartCountdown", history.countdown);
 
         history.restartTimer = setInterval(() => {
           history.countdown!--;
-
           io.to(roomId).emit("restartCountdown", history.countdown);
 
           if (history.countdown === 0) {
             clearInterval(history.restartTimer!);
             history.restartTimer = undefined;
             history.restartVotes.clear();
-
             io.to(roomId).emit("restartCanceled");
           }
         }, 1000);
       }
 
+      // If both players voted → confirm restart
       if (history.restartVotes.size === 2) {
         clearInterval(history.restartTimer!);
 
@@ -175,8 +174,14 @@ export const initGameSocket = (io: Server) => {
         history.moves = [];
         history.restartVotes.clear();
         history.restartTimer = undefined;
+        history.countdown = undefined;
 
         io.to(roomId).emit("restartConfirmed", history.players);
+      } else {
+        // update votes for first voter
+        io.to(roomId).emit("restartVoteUpdate", {
+          votes: history.restartVotes.size,
+        });
       }
     });
 
