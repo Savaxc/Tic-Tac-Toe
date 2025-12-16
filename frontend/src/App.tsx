@@ -1,5 +1,5 @@
 import "./App.css";
-import { TicTacToe } from "./components/tic-tac-toe/tic-tac-toe";
+import { AITicTacToe } from "./components/tic-tac-toe/tic-tac-toe";
 import {
   BrowserRouter as Router,
   Routes,
@@ -34,7 +34,7 @@ function App() {
         <main>
           <Routes>
             <Route path="/" element={<HomePage />} />
-            <Route path="/single-player" element={<TicTacToe />} />
+            <Route path="/single-player" element={<AITicTacToe />} />
 
             <Route
               path="/multiplayer"
