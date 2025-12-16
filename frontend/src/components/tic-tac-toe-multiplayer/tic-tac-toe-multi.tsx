@@ -62,6 +62,7 @@ export const TicTacToeMulti = () => {
   const [isDraw, setIsDraw] = useState(false);
   const [isInRoom, setIsInRoom] = useState(false);
   const [showLogoutNotif, setShowLogoutNotif] = useState(false);
+  const [iVotedRestart, setIVotedRestart] = useState(false);
 
   //state for histpry modal
   const [openHistoryDialog, setOpenHistoryDialog] = useState(false);
@@ -89,6 +90,7 @@ export const TicTacToeMulti = () => {
   //swap x/o request
   const [restartRequested, setRestartRequested] = useState(false);
   const [restartVotes, setRestartVotes] = useState(0);
+  const [restartCountdown, setRestartCountdown] = useState<number | null>(null);
 
   const [snackbar, setSnackbar] = useState<{
     open: boolean;
@@ -160,15 +162,15 @@ export const TicTacToeMulti = () => {
   const currentTurn = getCurrentTurn(board);
 
   // RESTART
-  const restart = (emitToServer = true) => {
-    setBoard(emptyBoard);
-    setWinner(null);
-    setIsDraw(false);
+  // const restart = (emitToServer = true) => {
+  //   setBoard(emptyBoard);
+  //   setWinner(null);
+  //   setIsDraw(false);
 
-    if (emitToServer && roomId) {
-      socket.emit("restartGame", { roomId });
-    }
-  };
+  //   if (emitToServer && roomId) {
+  //     socket.emit("restartGame", { roomId });
+  //   }
+  // };
 
   // SOCKET: JOIN ROOM ON LOAD
   useEffect(() => {
@@ -233,21 +235,26 @@ export const TicTacToeMulti = () => {
     };
 
     const handleRestartConfirmed = (players: { X?: string; O?: string }) => {
-      const mySessionId = localStorage.getItem("sessionId");
+      const sessionId = localStorage.getItem("sessionId");
 
-      if (players.X === mySessionId) setMySymbol("X");
-      if (players.O === mySessionId) setMySymbol("O");
+      if (players.X === sessionId) setMySymbol("X");
+      else if (players.O === sessionId) setMySymbol("O");
 
       setBoard(emptyBoard);
       setWinner(null);
       setIsDraw(false);
+
       setRestartRequested(false);
       setRestartVotes(0);
+      setRestartCountdown(null);
+      setIVotedRestart(false);
     };
 
     const handleRestartCanceled = () => {
       setRestartRequested(false);
       setRestartVotes(0);
+      setRestartCountdown(null);
+      setIVotedRestart(false);
       showSnackbar("Restart canceled (no response)", "warning");
     };
 
@@ -286,6 +293,11 @@ export const TicTacToeMulti = () => {
     socket.on("restartConfirmed", handleRestartConfirmed);
     socket.on("restartCanceled", handleRestartCanceled);
 
+    socket.on("restartCountdown", (seconds: number) => {
+      setRestartRequested(true);
+      setRestartCountdown(seconds);
+    });
+
     //cleanup
     return () => {
       socket.off("assignSymbol", handleAssignSymbol);
@@ -301,6 +313,15 @@ export const TicTacToeMulti = () => {
       socket.off("restartCanceled", handleRestartCanceled);
     };
   }, [roomId]);
+
+  //RESTART REQUEST(CONFIRM/CANCEL)
+  const requestRestart = () => {
+    socket.emit("requestRestart", roomId);
+  };
+
+  const cancelRestart = () => {
+    socket.emit("cancelRestart", roomId);
+  };
 
   // HANDLE MOVE
   const handleOnClick = (r: number, c: number) => {
@@ -374,9 +395,9 @@ export const TicTacToeMulti = () => {
     const newRoomId = res.data.roomId;
 
     //symbol change
-    const newSymbol = prevSymbol === "X" ? "O" : "X";
-    setMySymbol(newSymbol);
-    setPrevSymbol(newSymbol);
+    // const newSymbol = prevSymbol === "X" ? "O" : "X";
+    // setMySymbol(newSymbol);
+    // setPrevSymbol(newSymbol);
 
     // safe connect socket
     await socketEmitSafe("createRoom", newRoomId);
@@ -517,7 +538,9 @@ export const TicTacToeMulti = () => {
               )}
 
               {restartVotes > 0 && (
-                <p style={{ fontSize: "17px", color: "red", fontWeight: "bold" }}>
+                <p
+                  style={{ fontSize: "17px", color: "red", fontWeight: "bold" }}
+                >
                   Restart confirmations: {restartVotes} / 2
                 </p>
               )}
@@ -547,16 +570,38 @@ export const TicTacToeMulti = () => {
 
                 <Button
                   variant="outlined"
-                  disabled={restartRequested}
-                  onClick={() => {
-                    socket.emit("requestRestart", roomId);
-                    setRestartRequested(true);
-                  }}
+                  onClick={requestRestart}
+                  disabled={iVotedRestart}
                 >
-                  {restartRequested
-                    ? "Waiting for opponent..."
+                  {restartRequested && !iVotedRestart
+                    ? "Confirm Restart"
                     : "Restart Game"}
                 </Button>
+
+                {restartRequested && (
+                  <div style={{ marginTop: "10px", textAlign: "center" }}>
+                    <p style={{ fontWeight: "bold", color: "#ff9800" }}>
+                      Restart in {restartCountdown}s
+                    </p>
+
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: "10px",
+                        justifyContent: "center",
+                      }}
+                    >
+                      <Button
+                        variant="contained"
+                        color="warning"
+                        size="small"
+                        onClick={cancelRestart}
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </div>
             </>
           )}

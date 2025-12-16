@@ -6,6 +6,7 @@ export const initGameSocket = (io: Server) => {
     players: { X?: string; O?: string };
     restartVotes: Set<string>;
     restartTimer?: NodeJS.Timeout;
+    countdown?: number;
   }
 
   const gameHistories: Map<string, GameHistory> = new Map();
@@ -146,34 +147,55 @@ export const initGameSocket = (io: Server) => {
 
       history.restartVotes.add(sessionId);
 
-      io.to(roomId).emit("restartVoteUpdate", {
-        votes: history.restartVotes.size,
-      });
-
-      // START TIMER on first vote
       if (history.restartVotes.size === 1) {
-        history.restartTimer = setTimeout(() => {
-          history.restartVotes.clear();
-          history.restartTimer = undefined;
+        history.countdown = 10;
 
-          io.to(roomId).emit("restartCanceled");
-        }, 10000); // ⏱ 10s
+        io.to(roomId).emit("restartCountdown", history.countdown);
+
+        history.restartTimer = setInterval(() => {
+          history.countdown!--;
+
+          io.to(roomId).emit("restartCountdown", history.countdown);
+
+          if (history.countdown === 0) {
+            clearInterval(history.restartTimer!);
+            history.restartTimer = undefined;
+            history.restartVotes.clear();
+
+            io.to(roomId).emit("restartCanceled");
+          }
+        }, 1000);
       }
 
-      // BOTH CONFIRMED
       if (history.restartVotes.size === 2) {
-        if (history.restartTimer) {
-          clearTimeout(history.restartTimer);
-          history.restartTimer = undefined;
-        }
+        clearInterval(history.restartTimer!);
 
         const { X, O } = history.players;
         history.players = { X: O, O: X };
         history.moves = [];
         history.restartVotes.clear();
+        history.restartTimer = undefined;
 
         io.to(roomId).emit("restartConfirmed", history.players);
       }
+    });
+
+    //CONFIRM RESTART
+
+    //CANCEL RESTART
+    socket.on("cancelRestart", (roomId: string) => {
+      const history = gameHistories.get(roomId);
+      if (!history) return;
+
+      if (history.restartTimer) {
+        clearInterval(history.restartTimer);
+        history.restartTimer = undefined;
+      }
+
+      history.restartVotes.clear();
+      history.countdown = undefined;
+
+      io.to(roomId).emit("restartCanceled");
     });
 
     // DISCONNECT
