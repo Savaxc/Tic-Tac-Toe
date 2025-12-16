@@ -82,7 +82,7 @@ export const TicTacToeMulti = () => {
   const winningCells = winner ? getWinningCells(board) : [];
 
   //Symbol shange
-  const [prevSymbol, setPrevSymbol] = useState<"X" | "O">("O");
+  // const [prevSymbol, setPrevSymbol] = useState<"X" | "O">("O");
 
   //useSFX sounds
   const { playSoundEffect } = useSFX();
@@ -91,6 +91,10 @@ export const TicTacToeMulti = () => {
   const [restartRequested, setRestartRequested] = useState(false);
   const [restartVotes, setRestartVotes] = useState(0);
   const [restartCountdown, setRestartCountdown] = useState<number | null>(null);
+
+  //symbol animation
+  const [animateSymbol, setAnimateSymbol] = useState(false);
+  const [showSidesSwapped, setShowSidesSwapped] = useState(false);
 
   const [snackbar, setSnackbar] = useState<{
     open: boolean;
@@ -237,8 +241,22 @@ export const TicTacToeMulti = () => {
     const handleRestartConfirmed = (players: { X?: string; O?: string }) => {
       const sessionId = localStorage.getItem("sessionId");
 
-      if (players.X === sessionId) setMySymbol("X");
-      else if (players.O === sessionId) setMySymbol("O");
+      let newSymbol: "X" | "O" = mySymbol;
+
+      if (players.X === sessionId) newSymbol = "X";
+      else if (players.O === sessionId) newSymbol = "O";
+
+      if (newSymbol !== mySymbol) {
+        setAnimateSymbol(true);
+        setShowSidesSwapped(true); // ✨ Pokaži tekst
+
+        setTimeout(() => {
+          setAnimateSymbol(false);
+          setShowSidesSwapped(false); // ✨ Sakrij tekst
+        }, 1000); // trajanje animacije
+      }
+
+      setMySymbol(newSymbol);
 
       setBoard(emptyBoard);
       setWinner(null);
@@ -525,8 +543,15 @@ export const TicTacToeMulti = () => {
             // Ako smo u sobi i protivnik je povezan, prikayi igru (tablu)
             <>
               <p>
-                You are: <b>{mySymbol}</b>
+                You are:{" "}
+                <b className={animateSymbol ? "symbol-rotate" : ""}>
+                  {mySymbol}
+                </b>
               </p>
+              {showSidesSwapped && (
+                <p className="sides-swapped-text">Sides swapped!</p>
+              )}
+
               <p>
                 Turn: <b>{currentTurn}</b>
               </p>
