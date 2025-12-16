@@ -122,9 +122,17 @@ export const initGameSocket = (io: Server) => {
 
     // RESTART
     socket.on("restartGame", ({ roomId }) => {
-      const h = gameHistories.get(roomId);
-      if (h) h.moves = [];
-      io.to(roomId).emit("restartGame");
+      const history = gameHistories.get(roomId);
+      if (!history) return;
+
+        //swap x/o
+      const prevX = history.players.X;
+      history.players.X = history.players.O;
+      history.players.O = prevX;
+
+      history.moves = [];
+
+      io.to(roomId).emit("restartGame", history.players);
     });
 
     // DISCONNECT

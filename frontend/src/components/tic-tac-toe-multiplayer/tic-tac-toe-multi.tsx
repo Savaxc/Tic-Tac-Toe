@@ -157,15 +157,13 @@ export const TicTacToeMulti = () => {
 
   // RESTART
   const restart = (emitToServer = true) => {
-    const newSymbol = prevSymbol === "X" ? "O" : "X";
-    setMySymbol(newSymbol);
-    setPrevSymbol(newSymbol);
-
     setBoard(emptyBoard);
     setWinner(null);
     setIsDraw(false);
 
-    if (emitToServer && roomId) socket.emit("restartGame", { roomId });
+    if (emitToServer && roomId) {
+      socket.emit("restartGame", { roomId });
+    }
   };
 
   // SOCKET: JOIN ROOM ON LOAD
@@ -215,8 +213,15 @@ export const TicTacToeMulti = () => {
       }
     };
 
-    const handleRestartGame = () => {
-      restart(false);
+    const handleRestartGame = (players: { X?: string; O?: string }) => {
+      const sessionId = localStorage.getItem("sessionId");
+
+      if (players.X === sessionId) setMySymbol("X");
+      else if (players.O === sessionId) setMySymbol("O");
+
+      setBoard(emptyBoard);
+      setWinner(null);
+      setIsDraw(false);
     };
 
     const handleRoomNotFound = () => {
