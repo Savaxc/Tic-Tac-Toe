@@ -86,6 +86,10 @@ export const TicTacToeMulti = () => {
   //useSFX sounds
   const { playSoundEffect } = useSFX();
 
+  //swap x/o request
+  const [restartRequested, setRestartRequested] = useState(false);
+  const [restartVotes, setRestartVotes] = useState(0);
+
   const [snackbar, setSnackbar] = useState<{
     open: boolean;
     message: string;
@@ -224,6 +228,29 @@ export const TicTacToeMulti = () => {
       setIsDraw(false);
     };
 
+    const handleRestartVoteUpdate = ({ votes }: { votes: number }) => {
+      setRestartVotes(votes);
+    };
+
+    const handleRestartConfirmed = (players: { X?: string; O?: string }) => {
+      const mySessionId = localStorage.getItem("sessionId");
+
+      if (players.X === mySessionId) setMySymbol("X");
+      if (players.O === mySessionId) setMySymbol("O");
+
+      setBoard(emptyBoard);
+      setWinner(null);
+      setIsDraw(false);
+      setRestartRequested(false);
+      setRestartVotes(0);
+    };
+
+    const handleRestartCanceled = () => {
+      setRestartRequested(false);
+      setRestartVotes(0);
+      showSnackbar("Restart canceled (no response)", "warning");
+    };
+
     const handleRoomNotFound = () => {
       showSnackbar("Room does not exist!", "error");
       navigate("/multiplayer");
@@ -255,6 +282,9 @@ export const TicTacToeMulti = () => {
     socket.on("roomFull", handleRoomFull);
     socket.on("opponentConnected", handleOpponentConnected);
     socket.on("opponentLeft", handleOpponentLeft);
+    socket.on("restartVoteUpdate", handleRestartVoteUpdate);
+    socket.on("restartConfirmed", handleRestartConfirmed);
+    socket.on("restartCanceled", handleRestartCanceled);
 
     //cleanup
     return () => {
@@ -266,6 +296,9 @@ export const TicTacToeMulti = () => {
       socket.off("roomFull", handleRoomFull);
       socket.off("opponentConnected", handleOpponentConnected);
       socket.off("opponentLeft", handleOpponentLeft);
+      socket.off("restartVoteUpdate", handleRestartVoteUpdate);
+      socket.off("restartConfirmed", handleRestartConfirmed);
+      socket.off("restartCanceled", handleRestartCanceled);
     };
   }, [roomId]);
 
@@ -477,6 +510,18 @@ export const TicTacToeMulti = () => {
                 Turn: <b>{currentTurn}</b>
               </p>
 
+              {restartRequested && (
+                <p style={{ fontWeight: "bold", color: "#ff9800" }}>
+                  Waiting for opponent to confirm restart…
+                </p>
+              )}
+
+              {restartVotes > 0 && (
+                <p style={{ fontSize: "17px", color: "red", fontWeight: "bold" }}>
+                  Restart confirmations: {restartVotes} / 2
+                </p>
+              )}
+
               <Board
                 board={board}
                 handleClick={handleOnClick}
@@ -502,10 +547,15 @@ export const TicTacToeMulti = () => {
 
                 <Button
                   variant="outlined"
-                  onClick={() => restart(true)}
-                  className="restart-btn"
+                  disabled={restartRequested}
+                  onClick={() => {
+                    socket.emit("requestRestart", roomId);
+                    setRestartRequested(true);
+                  }}
                 >
-                  Restart Game
+                  {restartRequested
+                    ? "Waiting for opponent..."
+                    : "Restart Game"}
                 </Button>
               </div>
             </>

@@ -4,6 +4,8 @@ export const initGameSocket = (io: Server) => {
   interface GameHistory {
     moves: Array<Array<Array<string | null>>>;
     players: { X?: string; O?: string };
+    restartVotes: Set<string>;
+    restartTimer?: NodeJS.Timeout;
   }
 
   const gameHistories: Map<string, GameHistory> = new Map();
@@ -35,6 +37,7 @@ export const initGameSocket = (io: Server) => {
       gameHistories.set(roomId, {
         moves: [],
         players: { X: sessionId },
+        restartVotes: new Set(),
       });
 
       sessionToRoom.set(sessionId, roomId);
@@ -121,18 +124,56 @@ export const initGameSocket = (io: Server) => {
     });
 
     // RESTART
-    socket.on("restartGame", ({ roomId }) => {
+    // socket.on("restartGame", ({ roomId }) => {
+    //   const history = gameHistories.get(roomId);
+    //   if (!history) return;
+
+    //     //swap x/o
+    //   const prevX = history.players.X;
+    //   history.players.X = history.players.O;
+    //   history.players.O = prevX;
+
+    //   history.moves = [];
+
+    //   io.to(roomId).emit("restartGame", history.players);
+    // });
+
+    //REQUEST RESTART
+    socket.on("requestRestart", (roomId: string) => {
+      const sessionId = socketToSession.get(socket.id);
       const history = gameHistories.get(roomId);
-      if (!history) return;
+      if (!sessionId || !history) return;
 
-        //swap x/o
-      const prevX = history.players.X;
-      history.players.X = history.players.O;
-      history.players.O = prevX;
+      history.restartVotes.add(sessionId);
 
-      history.moves = [];
+      io.to(roomId).emit("restartVoteUpdate", {
+        votes: history.restartVotes.size,
+      });
 
-      io.to(roomId).emit("restartGame", history.players);
+      // START TIMER on first vote
+      if (history.restartVotes.size === 1) {
+        history.restartTimer = setTimeout(() => {
+          history.restartVotes.clear();
+          history.restartTimer = undefined;
+
+          io.to(roomId).emit("restartCanceled");
+        }, 10000); // ⏱ 10s
+      }
+
+      // BOTH CONFIRMED
+      if (history.restartVotes.size === 2) {
+        if (history.restartTimer) {
+          clearTimeout(history.restartTimer);
+          history.restartTimer = undefined;
+        }
+
+        const { X, O } = history.players;
+        history.players = { X: O, O: X };
+        history.moves = [];
+        history.restartVotes.clear();
+
+        io.to(roomId).emit("restartConfirmed", history.players);
+      }
     });
 
     // DISCONNECT
