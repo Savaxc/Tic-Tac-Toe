@@ -1,51 +1,57 @@
 import "./App.css";
-import { TicTacToe } from "./components/tic-tac-toe/tic-tac-toe";
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { AITicTacToe } from "./components/tic-tac-toe/tic-tac-toe";
+import {
+  BrowserRouter as Router,
+  Routes,
+  Route,
+  useNavigate,
+} from "react-router-dom";
 import { HomePage } from "./pages/home/home";
 import { TicTacToeMulti } from "./components/tic-tac-toe-multiplayer/tic-tac-toe-multi";
-import { useEffect, useState } from "react";
-import axios from "axios";
+import { LoginPage } from "./pages/auth/login";
+import { RegisterPage } from "./pages/auth/register";
+import { ProtectedRoute } from "./components/routes/ProtectedRoute";
+
+function AppHeader() {
+  const navigate = useNavigate();
+
+  return (
+    <header className="App-header">
+      <h2 onClick={() => navigate("/")} className="header-title header-title hover-underline">
+        Tic-Tac-Toe
+      </h2>
+    </header>
+  );
+}
 
 
 function App() {
-	const [array, setArray] = useState([]);
-
-	useEffect(() => {
-  const fetchAPI = async () => {
-    const response = await axios.get("http://localhost:8080/api");
-    setArray(response.data.fruits);
-    console.log(response.data.fruits);
-  };
-
-  fetchAPI();
-}, []);
-
-
   return (
-		<div className='App'>
-			<header className='App-header'>
-				<h2>
-					Tic-Tac-Toe
-				</h2>
-			</header>
-			<main>
-        <Router>
+    <div className="App">
+      <Router>
+        <AppHeader />
+
+        <main>
           <Routes>
             <Route path="/" element={<HomePage />} />
-            <Route path="/single-player" element={<TicTacToe />} />
-            <Route path="/multiplayer" element={<TicTacToeMulti />} />
-          </Routes>
-        </Router>
+            <Route path="/single-player" element={<AITicTacToe />} />
 
-				{array.map((fruit, index) => (
-          <div key={index}>
-            <p>{fruit}</p>
-            <br></br>
-          </div>
-        ))}
-			</main>
-		</div>
-	);
+            <Route
+              path="/multiplayer"
+              element={
+                <ProtectedRoute>
+                  <TicTacToeMulti />
+                </ProtectedRoute>
+              }
+            />
+
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/register" element={<RegisterPage />} />
+          </Routes>
+        </main>
+      </Router>
+    </div>
+  );
 }
 
-export default App
+export default App;
