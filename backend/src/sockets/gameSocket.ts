@@ -134,7 +134,7 @@ export const initGameSocket = (io: Server) => {
       socket.to(roomId).emit("opponentMove", board);
     });
 
-    // GAME OVER (JEDINO MESTO gde se završava igra)
+    // GAME OVER
     socket.on("gameOver", async ({ roomId, winner }) => {
       try {
         await pool.query(
@@ -193,7 +193,7 @@ export const initGameSocket = (io: Server) => {
       }
     });
 
-    // DISCONNECT (KRITIČNI DEO)
+    // DISCONNECT
     socket.on("disconnect", async () => {
       const roomId = userToRoom.get(userId);
       if (!roomId) return;
@@ -216,7 +216,6 @@ export const initGameSocket = (io: Server) => {
 
           const movesCount = Number(movesRes.rows[0].count);
 
-          // ❌ NEMA POTEZA → IGRA NIKAD NIJE POČELA → BRIŠI
           if (movesCount === 0) {
             await pool.query(`DELETE FROM games WHERE id = $1`, [
               history.gameId,
