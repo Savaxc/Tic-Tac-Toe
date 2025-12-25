@@ -11,6 +11,8 @@ import { TicTacToeMulti } from "./components/tic-tac-toe-multiplayer/tic-tac-toe
 import { LoginPage } from "./pages/auth/login";
 import { RegisterPage } from "./pages/auth/register";
 import { ProtectedRoute } from "./components/routes/ProtectedRoute";
+import GameHistory from "./pages/GameHistory";
+import GameReplay from "./pages/GameReplay";
 
 function AppHeader() {
   const navigate = useNavigate();
@@ -40,10 +42,13 @@ function App() {
               path="/multiplayer"
               element={
                 <ProtectedRoute>
-                  <TicTacToeMulti />
+                  <TicTacToeMulti key={location.search} />
                 </ProtectedRoute>
               }
             />
+
+            <Route path="/history" element={<GameHistory />} />
+            <Route path="/game/:gameId/moves" element={<GameReplay />} />
 
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />

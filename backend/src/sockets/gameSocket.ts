@@ -1,155 +1,167 @@
 import { Server } from "socket.io";
+import { pool } from "../config/db";
+import jwt from "jsonwebtoken";
 
 export const initGameSocket = (io: Server) => {
   interface GameHistory {
+    gameId: number;
     moves: Array<Array<Array<string | null>>>;
-    players: { X?: string; O?: string };
-    restartVotes: Set<string>;
+    players: { X?: number; O?: number };
+    restartVotes: Set<number>;
     restartTimer?: NodeJS.Timeout;
     countdown?: number;
   }
 
-  const gameHistories: Map<string, GameHistory> = new Map();
-  const socketToSession: Map<string, string> = new Map();
-  const sessionToRoom: Map<string, string> = new Map();
+  const gameHistories = new Map<string, GameHistory>();
+  const userToRoom = new Map<number, string>();
 
+  // HELPERS
+  const getActiveGame = async (roomId: string) => {
+    const res = await pool.query(
+      `SELECT id FROM games WHERE room_id = $1 AND finished_at IS NULL`,
+      [roomId]
+    );
+    return res.rows[0] ?? null;
+  };
+
+  // CONNECTION
   io.on("connection", (socket) => {
     console.log("Client connected:", socket.id);
 
-    // REGISTRACIJA SESIJE
-    socket.on("registerSession", (sessionId: string) => {
-      socketToSession.set(socket.id, sessionId);
-      console.log("REGISTER SESSION RECEIVED:", sessionId);
-      console.log(`Registered session ${sessionId} for socket ${socket.id}`);
-    });
+    // AUTH
+    const token = socket.handshake.auth?.token;
+    if (!token) {
+      socket.disconnect();
+      return;
+    }
 
-    // CREATE ROOM
-    socket.on("createRoom", (roomId: string) => {
-      const sessionId = socketToSession.get(socket.id);
-      if (!sessionId) return;
-
-      if (gameHistories.has(roomId)) {
-        socket.emit("roomAlreadyExists");
-        return;
-      }
-
-      socket.join(roomId);
-
-      gameHistories.set(roomId, {
-        moves: [],
-        players: { X: sessionId },
-        restartVotes: new Set(),
-      });
-
-      sessionToRoom.set(sessionId, roomId);
-
-      socket.emit("assignSymbol", "X");
-
-      console.log(`Room created: ${roomId} by session ${sessionId}`);
-    });
+    let userId: number;
+    try {
+      const decoded: any = jwt.verify(token, process.env.JWT_SECRET!);
+      userId = decoded.id;
+    } catch {
+      socket.disconnect();
+      return;
+    }
 
     // JOIN ROOM
-    socket.on("joinRoom", (roomId: string) => {
-      const sessionId = socketToSession.get(socket.id);
-      if (!sessionId) return;
+    socket.on("joinRoom", async (roomId: string) => {
+      try {
+        const game = await getActiveGame(roomId);
 
-      const history = gameHistories.get(roomId);
-      if (!history) {
-        socket.emit("roomNotFound");
-        return;
-      }
+        if (!game) {
+          socket.emit("roomError", "Room does not exist or was closed.");
+          return;
+        }
 
-      // check current count
-      const room = io.sockets.adapter.rooms.get(roomId);
-      const currentCount = room ? room.size : 0;
+        let history = gameHistories.get(roomId);
 
-      const players = history.players;
+        // PLAYER X (creator)
+        if (!history) {
+          history = {
+            gameId: game.id,
+            moves: [],
+            players: { X: userId },
+            restartVotes: new Set(),
+          };
 
-      // If session was in room -> recconnect
-      if (players.X === sessionId) {
+          gameHistories.set(roomId, history);
+          socket.join(roomId);
+          userToRoom.set(userId, roomId);
+
+          socket.emit("assignSymbol", "X");
+          return;
+        }
+
+        const { players } = history;
+
+        // RECONNECT
+        if (players.X === userId || players.O === userId) {
+          socket.join(roomId);
+          userToRoom.set(userId, roomId);
+          socket.emit(
+            "assignSymbol",
+            players.X === userId ? "X" : "O"
+          );
+          socket.to(roomId).emit("opponentConnected");
+          return;
+        }
+
+        // ROOM FULL
+        if (players.X && players.O) {
+          socket.emit("roomFull");
+          return;
+        }
+
+        // PLAYER O
+        players.O = userId;
         socket.join(roomId);
-        sessionToRoom.set(sessionId, roomId);
-        socket.emit("assignSymbol", "X");
-        socket.to(roomId).emit("opponentConnected");
-        return;
-      }
+        userToRoom.set(userId, roomId);
 
-      if (players.O === sessionId) {
-        socket.join(roomId);
-        sessionToRoom.set(sessionId, roomId);
+        await pool.query(
+          `UPDATE games SET player_o_user_id = $1 WHERE room_id = $2`,
+          [userId, roomId]
+        );
+
         socket.emit("assignSymbol", "O");
         socket.to(roomId).emit("opponentConnected");
-        return;
+      } catch (err) {
+        console.error("joinRoom error:", err);
+        socket.emit("roomError", "Failed to join room");
       }
-
-      if (currentCount >= 2) {
-        socket.emit("roomFull");
-        return;
-      }
-
-      socket.join(roomId);
-      sessionToRoom.set(sessionId, roomId);
-
-      if (!players.X) {
-        players.X = sessionId;
-        socket.emit("assignSymbol", "X");
-      } else {
-        players.O = sessionId;
-        socket.emit("assignSymbol", "O");
-        socket.to(roomId).emit("opponentConnected");
-      }
-
-      gameHistories.set(roomId, history);
-
-      console.log(`Session ${sessionId} joined room ${roomId}`);
     });
 
     // PLAYER MOVE
-    socket.on("playerMove", ({ roomId, board }) => {
-      socket.to(roomId).emit("opponentMove", board);
-
+    socket.on("playerMove", async ({ roomId, board }) => {
       const history = gameHistories.get(roomId);
       if (!history) return;
 
+      const moveIndex = history.moves.length;
       history.moves.push(board);
+
+      try {
+        await pool.query(
+          `
+          INSERT INTO game_moves (game_id, move_index, board)
+          VALUES ($1, $2, $3)
+          `,
+          [history.gameId, moveIndex, JSON.stringify(board)]
+        );
+      } catch (err) {
+        console.error("Failed to save move:", err);
+      }
+
+      socket.to(roomId).emit("opponentMove", board);
     });
 
-    // GAME HISTORY
-    socket.on("getGameHistory", (roomId, cb) => {
-      cb(gameHistories.get(roomId) || null);
-    });
+    // GAME OVER (JEDINO MESTO gde se završava igra)
+    socket.on("gameOver", async ({ roomId, winner }) => {
+      try {
+        await pool.query(
+          `
+          UPDATE games
+          SET winner = $1, finished_at = NOW()
+          WHERE room_id = $2
+          `,
+          [winner, roomId]
+        );
 
-    // GAME OVER
-    socket.on("gameOver", ({ roomId, winner }) => {
-      io.to(roomId).emit("gameFinished", winner);
+        io.to(roomId).emit("gameFinished", winner);
+      } catch (err) {
+        console.error("gameOver error:", err);
+      }
     });
 
     // RESTART
-    // socket.on("restartGame", ({ roomId }) => {
-    //   const history = gameHistories.get(roomId);
-    //   if (!history) return;
-
-    //     //swap x/o
-    //   const prevX = history.players.X;
-    //   history.players.X = history.players.O;
-    //   history.players.O = prevX;
-
-    //   history.moves = [];
-
-    //   io.to(roomId).emit("restartGame", history.players);
-    // });
-
-    //REQUEST RESTART
     socket.on("requestRestart", (roomId: string) => {
-      const sessionId = socketToSession.get(socket.id);
       const history = gameHistories.get(roomId);
-      if (!sessionId || !history) return;
+      if (!history) return;
 
-      history.restartVotes.add(sessionId);
+      history.restartVotes.add(userId);
 
-      // Start countdown if first vote
       if (history.restartVotes.size === 1) {
         history.countdown = 10;
+
         io.to(roomId).emit("restartCountdown", history.countdown);
 
         history.restartTimer = setInterval(() => {
@@ -158,68 +170,63 @@ export const initGameSocket = (io: Server) => {
 
           if (history.countdown === 0) {
             clearInterval(history.restartTimer!);
-            history.restartTimer = undefined;
             history.restartVotes.clear();
+            history.countdown = undefined;
             io.to(roomId).emit("restartCanceled");
           }
         }, 1000);
       }
 
-      // If both players voted → confirm restart
       if (history.restartVotes.size === 2) {
         clearInterval(history.restartTimer!);
 
-        const { X, O } = history.players;
-        history.players = { X: O, O: X };
+        history.players = {
+          X: history.players.O,
+          O: history.players.X,
+        };
+
         history.moves = [];
         history.restartVotes.clear();
-        history.restartTimer = undefined;
         history.countdown = undefined;
 
         io.to(roomId).emit("restartConfirmed", history.players);
-      } else {
-        // update votes for first voter
-        io.to(roomId).emit("restartVoteUpdate", {
-          votes: history.restartVotes.size,
-        });
       }
     });
 
-    //CONFIRM RESTART
-
-    //CANCEL RESTART
-    socket.on("cancelRestart", (roomId: string) => {
-      const history = gameHistories.get(roomId);
-      if (!history) return;
-
-      if (history.restartTimer) {
-        clearInterval(history.restartTimer);
-        history.restartTimer = undefined;
-      }
-
-      history.restartVotes.clear();
-      history.countdown = undefined;
-
-      io.to(roomId).emit("restartCanceled");
-    });
-
-    // DISCONNECT
-    socket.on("disconnect", () => {
-      const sessionId = socketToSession.get(socket.id);
-      if (!sessionId) return;
-
-      const roomId = sessionToRoom.get(sessionId);
+    // DISCONNECT (KRITIČNI DEO)
+    socket.on("disconnect", async () => {
+      const roomId = userToRoom.get(userId);
       if (!roomId) return;
 
-      console.log(`Session ${sessionId} disconnected.`);
-
       socket.to(roomId).emit("opponentLeft");
-      sessionToRoom.delete(sessionId);
+      userToRoom.delete(userId);
+
       const room = io.sockets.adapter.rooms.get(roomId);
 
       if (!room || room.size === 0) {
-        console.log("Deleting empty room:", roomId);
+        const history = gameHistories.get(roomId);
         gameHistories.delete(roomId);
+
+        if (history) {
+          // proveri da li postoji ijedan potez
+          const movesRes = await pool.query(
+            `SELECT COUNT(*) FROM game_moves WHERE game_id = $1`,
+            [history.gameId]
+          );
+
+          const movesCount = Number(movesRes.rows[0].count);
+
+          // ❌ NEMA POTEZA → IGRA NIKAD NIJE POČELA → BRIŠI
+          if (movesCount === 0) {
+            await pool.query(`DELETE FROM games WHERE id = $1`, [
+              history.gameId,
+            ]);
+            console.log(`Game ${history.gameId} deleted (never started)`);
+            return;
+          }
+        }
+
+        console.log(`Room ${roomId} closed (game already finished or abandoned)`);
       }
     });
   });
