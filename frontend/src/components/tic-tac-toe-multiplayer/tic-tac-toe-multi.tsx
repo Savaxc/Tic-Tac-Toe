@@ -1,9 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import useSFX from "../../hooks/useSFX";
 import { Board } from "../board/board";
-import axios from "axios";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { io } from "socket.io-client";
+import { io, Socket } from "socket.io-client";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 //@ts-ignore
 import confetti from "https://cdn.skypack.dev/canvas-confetti";
@@ -11,46 +10,30 @@ import { logout } from "../../utils/logout";
 import {
   Snackbar,
   Alert,
-  IconButton,
   Dialog,
   DialogContent,
   DialogTitle,
   TextField,
   DialogActions,
   Button,
+  CircularProgress,
 } from "@mui/material";
-import CircularProgress from "@mui/material/CircularProgress";
-//Generate SessionId
-// const generateSessionId = () => {
-//   let id = localStorage.getItem("sessionId");
-//   if (!id) {
-//     id = crypto.randomUUID();
-//     localStorage.setItem("sessionId", id);
-//   }
-//   return id;
-// };
-
-const socket = io("http://localhost:8080", { autoConnect: false });
-
-socket.on("connect", () => {
-  const sessionId = localStorage.getItem("sessionId");
-
-  if (sessionId) {
-    socket.emit("registerSession", sessionId);
-  }
-});
+import axios from "axios";
 
 type BoardArray = Array<Array<string | null>>;
 
-interface GameHistory {
+interface GameHistoryData {
   moves: BoardArray[];
-  players: { X?: string; O?: string };
+  players: { X?: number; O?: number };
+  restartVotes: any;
 }
 
 export const TicTacToeMulti = () => {
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const roomId = params.get("room");
+
+  const socketRef = useRef<Socket | null>(null);
 
   const emptyBoard: BoardArray = Array.from({ length: 3 }, () =>
     Array(3).fill(null)
@@ -64,224 +47,99 @@ export const TicTacToeMulti = () => {
   const [showLogoutNotif, setShowLogoutNotif] = useState(false);
   const [iVotedRestart, setIVotedRestart] = useState(false);
 
-  //state for histpry modal
-  const [openHistoryDialog, setOpenHistoryDialog] = useState(false);
-  const [historyMoves, setHistoryMoves] = useState<BoardArray[]>([]);
-  const [historyIndex, setHistoryIndex] = useState(0);
-
-  //MUI
+  // MUI states
   const [openJoinDialog, setOpenJoinDialog] = useState(false);
   const [roomInput, setRoomInput] = useState("");
   const [openExitModal, setOpenExitModal] = useState(false);
 
-  //DISCONNECT PLAYERS INFO
-  const [, setOpponentLeft] = useState(false);
+  // Opponent info
+  const [opponentLeft, setOpponentLeft] = useState(false);
   const [waitingForOpponent, setWaitingForOpponent] = useState(false);
 
-  //Color Board Winner
+  // Winning cells
   const winningCells = winner ? getWinningCells(board) : [];
 
-  //Symbol shange
-  // const [prevSymbol, setPrevSymbol] = useState<"X" | "O">("O");
-
-  //useSFX sounds
+  // useSFX
   const { playSoundEffect } = useSFX();
 
-  //swap x/o request
+  // Restart state
   const [restartRequested, setRestartRequested] = useState(false);
   const [restartVotes, setRestartVotes] = useState(0);
   const [restartCountdown, setRestartCountdown] = useState<number | null>(null);
 
-  //symbol animation
+  // Symbol animation
   const [animateSymbol, setAnimateSymbol] = useState(false);
   const [showSidesSwapped, setShowSidesSwapped] = useState(false);
 
+  // Snackbar
   const [snackbar, setSnackbar] = useState<{
     open: boolean;
     message: string;
     severity: "success" | "error" | "info" | "warning";
-  }>({
-    open: false,
-    message: "",
-    severity: "info",
-  });
+  }>({ open: false, message: "", severity: "info" });
 
   const showSnackbar = (
     message: string,
     severity: "success" | "error" | "info" | "warning" = "info"
-  ) => {
-    setSnackbar({ open: true, message, severity });
-  };
+  ) => setSnackbar({ open: true, message, severity });
 
   const handleOpenJoinDialog = () => {
     setRoomInput("");
     setOpenJoinDialog(true);
   };
+  const handleCloseJoinDialog = () => setOpenJoinDialog(false);
 
-  const handleCloseJoinDialog = () => {
-    setOpenJoinDialog(false);
-  };
-
-  //FUNCIJA ZA OTVARANJE ISTORIJE
-  const handleOpenHistory = () => {
-    if (!roomId) return;
-
-    socket.emit("getGameHistory", roomId, (history: GameHistory | null) => {
-      if (history && history.moves.length > 0) {
-        setHistoryMoves(history.moves);
-        setHistoryIndex(0);
-        setOpenHistoryDialog(true);
-      } else {
-        showSnackbar("No game history available!", "info");
-      }
-    });
-  };
-
-  const handleCloseHistory = () => {
-    setOpenHistoryDialog(false);
-  };
-
-  const handlePrevMove = () => {
-    setHistoryIndex((prev) => Math.max(prev - 1, 0));
-  };
-
-  const handleNextMove = () => {
-    setHistoryIndex((prev) => Math.min(prev + 1, historyMoves.length - 1));
-  };
-
-  const getHistoryResult = () => {
-    if (!historyMoves.length) return null;
-    const lastBoard = historyMoves[historyMoves.length - 1];
-    const finalWinner = checkWinner(lastBoard);
-    if (!finalWinner) return "Draw!";
-    if (finalWinner === mySymbol) return "You won!";
-    return "You lost!";
-  };
-
-  // TURN LOGIC
-  const getCurrentTurn = (boardState: BoardArray) => {
-    const moves = boardState.flat().filter(Boolean).length;
-    return moves % 2 === 0 ? "X" : "O";
-  };
+  //Turn logic
+  const getCurrentTurn = (boardState: BoardArray) =>
+    boardState.flat().filter(Boolean).length % 2 === 0 ? "X" : "O";
   const currentTurn = getCurrentTurn(board);
 
-  // RESTART
-  // const restart = (emitToServer = true) => {
-  //   setBoard(emptyBoard);
-  //   setWinner(null);
-  //   setIsDraw(false);
-
-  //   if (emitToServer && roomId) {
-  //     socket.emit("restartGame", { roomId });
-  //   }
-  // };
-
-  // SOCKET: JOIN ROOM ON LOAD
+  // SOCKET LOGIC
   useEffect(() => {
     if (!roomId) return;
 
-    const joinRoomSafely = () => {
-      console.log("JOINING ROOM:", roomId);
+    const token = localStorage.getItem("token");
+
+    socketRef.current = io("http://localhost:8080", {
+      auth: { token },
+      transports: ["websocket"], 
+    });
+
+    const socket = socketRef.current;
+
+    socket.on("connect", () => {
+      console.log("Connected via Socket.IO, joining room:", roomId);
       socket.emit("joinRoom", roomId);
-    };
+    });
 
-    // Ako nije povezan — poveyi se i sacekaj connect event
-    if (!socket.connected) {
-      socket.connect();
-      socket.once("connect", () => {
-        const sessionId = localStorage.getItem("sessionId");
-        if (sessionId) socket.emit("registerSession", sessionId);
-        joinRoomSafely();
-      });
-    } else {
-      setTimeout(() => {
-        joinRoomSafely();
-      }, 10);
-    }
-
-    //handlers
+    // 2. Handleri
     const handleAssignSymbol = (symbol: "X" | "O") => {
       setMySymbol(symbol);
       setIsInRoom(true);
-    };
 
-    const handleOpponentMove = (newBoard: BoardArray) => {
-      setBoard(newBoard);
-    };
+      if (symbol === "X") setWaitingForOpponent(true);
+      else setWaitingForOpponent(false);
 
-    //on GameFinished set draw or winner
-    const handleGameFinished = (winner: string | null) => {
-      if (winner === null) {
-        setIsDraw(true);
-        playSoundEffect("GAME_OVER");
-      } else {
-        setWinner(winner);
+      //Sinhronizacija stanja (Reconnect fix)
+      socket.emit(
+        "getGameHistory",
+        roomId,
+        (history: GameHistoryData | null) => {
+          if (!history || history.moves.length === 0) {
+            setBoard(emptyBoard);
+            setWinner(null);
+            setIsDraw(false);
+            return;
+          }
 
-        if (winner !== mySymbol) {
-          playSoundEffect("GAME_OVER");
+          const lastBoardState = history.moves[history.moves.length - 1];
+          setBoard(lastBoardState);
+
+          const w = checkWinner(lastBoardState);
+          if (w) setWinner(w);
+          else if (!lastBoardState.flat().includes(null)) setIsDraw(true);
         }
-      }
-    };
-
-    const handleRestartGame = (players: { X?: string; O?: string }) => {
-      const sessionId = localStorage.getItem("sessionId");
-
-      if (players.X === sessionId) setMySymbol("X");
-      else if (players.O === sessionId) setMySymbol("O");
-
-      setBoard(emptyBoard);
-      setWinner(null);
-      setIsDraw(false);
-    };
-
-    const handleRestartVoteUpdate = ({ votes }: { votes: number }) => {
-      setRestartVotes(votes);
-    };
-
-    const handleRestartConfirmed = (players: { X?: string; O?: string }) => {
-      const sessionId = localStorage.getItem("sessionId");
-
-      let newSymbol: "X" | "O" = mySymbol;
-
-      if (players.X === sessionId) newSymbol = "X";
-      else if (players.O === sessionId) newSymbol = "O";
-
-      if (newSymbol !== mySymbol) {
-        setAnimateSymbol(true);
-        setShowSidesSwapped(true);
-
-        setTimeout(() => {
-          setAnimateSymbol(false);
-          setShowSidesSwapped(false);
-        }, 1000);
-      }
-
-      setMySymbol(newSymbol);
-      setBoard(emptyBoard);
-      setWinner(null);
-      setIsDraw(false);
-      setRestartRequested(false);
-      setRestartVotes(0);
-      setRestartCountdown(null);
-      setIVotedRestart(false);
-    };
-
-    const handleRestartCanceled = () => {
-      setRestartRequested(false);
-      setRestartVotes(0);
-      setRestartCountdown(null);
-      setIVotedRestart(false);
-      showSnackbar("Restart canceled (no response)", "warning");
-    };
-
-    const handleRoomNotFound = () => {
-      showSnackbar("Room does not exist!", "error");
-      navigate("/multiplayer");
-    };
-
-    const handleRoomFull = () => {
-      showSnackbar("Room is full! Maximum 2 players allowed.", "warning");
-      navigate("/multiplayer");
+      );
     };
 
     const handleOpponentConnected = () => {
@@ -290,180 +148,180 @@ export const TicTacToeMulti = () => {
       showSnackbar("Opponent connected!", "success");
     };
 
+    const handleOpponentMove = (newBoard: BoardArray) => {
+      setBoard(newBoard);
+    };
+
+    const handleGameFinished = (winner: string | null) => {
+      if (!winner) setIsDraw(true);
+      else setWinner(winner);
+      playSoundEffect("GAME_OVER");
+    };
+
+    const handleRestartCountdown = (count: number) => {
+      setRestartRequested(true);
+      setRestartCountdown(count);
+      if (restartVotes === 0) setRestartVotes(1);
+    };
+
+    const handleRestartConfirmed = (players: { X?: number; O?: number }) => {
+      setMySymbol((prev) => (prev === "X" ? "O" : "X"));
+
+      setAnimateSymbol(true);
+      setShowSidesSwapped(true);
+      setTimeout(() => {
+        setAnimateSymbol(false);
+        setShowSidesSwapped(false);
+      }, 1000);
+
+      setBoard(emptyBoard);
+      setWinner(null);
+      setIsDraw(false);
+      setRestartRequested(false);
+      setRestartVotes(0);
+      setRestartCountdown(null);
+      setIVotedRestart(false);
+      showSnackbar("Game restarted! Sides swapped.", "success");
+    };
+
+    const handleRestartCanceled = () => {
+      setRestartRequested(false);
+      setRestartVotes(0);
+      setRestartCountdown(null);
+      setIVotedRestart(false);
+      showSnackbar("Restart canceled.", "warning");
+    };
+
+    const handleRoomError = (msg: string) => {
+      showSnackbar(msg, "error");
+      navigate("/multiplayer");
+    };
+
+    const handleRoomFull = () => {
+      showSnackbar("Room is full!", "error");
+      navigate("/multiplayer");
+    };
+
     const handleOpponentLeft = () => {
       setOpponentLeft(true);
       setWaitingForOpponent(true);
-      showSnackbar("Opponent left the game!", "warning");
+      showSnackbar("Opponent left the game.", "warning");
     };
 
-    // event listeners
+    // Registracija listenera
     socket.on("assignSymbol", handleAssignSymbol);
+    socket.on("opponentConnected", handleOpponentConnected);
     socket.on("opponentMove", handleOpponentMove);
     socket.on("gameFinished", handleGameFinished);
-    socket.on("restartGame", handleRestartGame);
-    socket.on("roomNotFound", handleRoomNotFound);
-    socket.on("roomFull", handleRoomFull);
-    socket.on("opponentConnected", handleOpponentConnected);
-    socket.on("opponentLeft", handleOpponentLeft);
-    socket.on("restartVoteUpdate", handleRestartVoteUpdate);
+    socket.on("restartCountdown", handleRestartCountdown);
     socket.on("restartConfirmed", handleRestartConfirmed);
     socket.on("restartCanceled", handleRestartCanceled);
+    socket.on("roomError", handleRoomError);
+    socket.on("roomFull", handleRoomFull);
+    socket.on("opponentLeft", handleOpponentLeft);
 
-    socket.on("restartCountdown", (seconds: number) => {
-      setRestartRequested(true);
-      setRestartCountdown(seconds);
-    });
-
-    //cleanup
+    // CLEANUP
     return () => {
-      socket.off("assignSymbol", handleAssignSymbol);
-      socket.off("opponentMove", handleOpponentMove);
-      socket.off("gameFinished", handleGameFinished);
-      socket.off("restartGame", handleRestartGame);
-      socket.off("roomNotFound", handleRoomNotFound);
-      socket.off("roomFull", handleRoomFull);
-      socket.off("opponentConnected", handleOpponentConnected);
-      socket.off("opponentLeft", handleOpponentLeft);
-      socket.off("restartVoteUpdate", handleRestartVoteUpdate);
-      socket.off("restartConfirmed", handleRestartConfirmed);
-      socket.off("restartCanceled", handleRestartCanceled);
+      socket.disconnect();
     };
-  }, [roomId]);
+  }, [roomId, navigate]);
 
-  //RESTART REQUEST(CONFIRM/CANCEL)
+  // ACTIONS
   const requestRestart = () => {
-    socket.emit("requestRestart", roomId);
-    setIVotedRestart(true);
+    if (socketRef.current) {
+      socketRef.current.emit("requestRestart", roomId);
+      setIVotedRestart(true);
+      setRestartVotes((prev) => prev + 1);
+    }
   };
 
-  const cancelRestart = () => {
-    socket.emit("cancelRestart", roomId);
-  };
+  // const cancelRestart = () => {
+  //   showSnackbar("Waiting for timer to expire...", "info");
+  // };
 
-  // HANDLE MOVE
   const handleOnClick = (r: number, c: number) => {
-    if (restartRequested) return;
-    if (!isInRoom) return;
-    if (winner) return;
-    if (currentTurn !== mySymbol) return;
-    if (board[r][c] !== null) return;
+    if (
+      restartRequested ||
+      !isInRoom ||
+      winner ||
+      currentTurn !== mySymbol ||
+      board[r][c]
+    )
+      return;
 
     const updated = board.map((row, rIndex) =>
       row.map((col, cIndex) => (rIndex === r && cIndex === c ? mySymbol : col))
     );
 
     setBoard(updated);
-    socket.emit("playerMove", { roomId, board: updated });
+
+    if (socketRef.current) {
+      socketRef.current.emit("playerMove", { roomId, board: updated });
+    }
 
     const w = checkWinner(updated);
     if (w) {
       setWinner(w);
-      socket.emit("gameOver", { roomId, winner: w });
-
-      if (w === mySymbol) {
-        playSoundEffect("GAME_WIN");
+      if (socketRef.current) {
+        socketRef.current.emit("gameOver", { roomId, winner: w });
       }
-
+      if (w === mySymbol) playSoundEffect("GAME_WIN");
       confetti();
       return;
     }
 
-    //Draw result check
-    const hasEmpty = updated.some((row) => row.includes(null));
-    if (!hasEmpty) {
+    if (!updated.flat().includes(null)) {
       setIsDraw(true);
-      socket.emit("gameOver", { roomId, winner: null });
+      if (socketRef.current) {
+        socketRef.current.emit("gameOver", { roomId, winner: null });
+      }
     }
   };
 
-  //socket povezan pre emitovanja
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const socketEmitSafe = (event: string, data?: any) => {
-    return new Promise<void>((resolve) => {
-      if (socket.connected) {
-        socket.emit(event, data);
-        return resolve();
-      }
-      socket.once("connect", () => {
-        socket.emit(event, data);
-        resolve();
-      });
-      socket.connect();
-    });
-  };
-
-  // CREATE / JOIN ROOM
   const createNewGame = async () => {
     const token = localStorage.getItem("token");
-    const sessionId = localStorage.getItem("sessionId");
-    if (!token) return navigate("/login");
-    if (!sessionId) {
-      alert("Session not initialized yet!");
-      return navigate("/login");
+    try {
+      const res = await axios.post(
+        "http://localhost:8080/game/create",
+        {},
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+      navigate(`/multiplayer?room=${res.data.roomId}`);
+    } catch (e) {
+      console.error(e);
+      showSnackbar("Failed to create game", "error");
     }
-
-    const res = await axios.post(
-      "http://localhost:8080/game/create",
-      {},
-      { headers: { Authorization: `Bearer ${token}` } }
-    );
-
-    // navigate(`/multiplayer?room=${res.data.roomId}`);
-
-    const newRoomId = res.data.roomId;
-
-    //symbol change
-    // const newSymbol = prevSymbol === "X" ? "O" : "X";
-    // setMySymbol(newSymbol);
-    // setPrevSymbol(newSymbol);
-
-    // safe connect socket
-    await socketEmitSafe("createRoom", newRoomId);
-    setWaitingForOpponent(true);
-
-    navigate(`/multiplayer?room=${newRoomId}`);
-  };
-
-  // LOGOUT
-  const handleLogout = () => {
-    if (socket.connected) {
-      socket.disconnect();
-    }
-
-    setShowLogoutNotif(true);
-
-    //1.5sec timeout to show notif
-    setTimeout(() => {
-      logout();
-    }, 1500);
   };
 
   const handleJoinRoom = () => {
     if (!roomInput.trim()) return;
     navigate(`/multiplayer?room=${roomInput.trim()}`);
     setOpenJoinDialog(false);
-    showSnackbar("You connected!", "success");
   };
 
-  //EXIT GAME
+  const handleLogout = () => {
+    if (socketRef.current) socketRef.current.disconnect();
+    setShowLogoutNotif(true);
+    setTimeout(() => logout(), 1500);
+  };
+
   const handleExitGame = () => {
     setOpenExitModal(false);
-
-    socket.emit("exitGame");
-    socket.disconnect();
+    if (socketRef.current) {
+      socketRef.current.emit("leaveRoom", roomId);
+      socketRef.current.disconnect();
+    }
     navigate("/multiplayer");
   };
 
   return (
     <div className="game">
-      {/* Logout notif*/}
       {showLogoutNotif && (
-        <div className="logout-notification">
-          <span>👋</span> Logout successfull.
-        </div>
+        <div className="logout-notification">👋 Logout successfull.</div>
       )}
 
-      {/* HEADER */}
       <div className="game-header">
         <h1>Multiplayer Mode</h1>
         <button className="logout-btn" onClick={handleLogout}>
@@ -471,30 +329,24 @@ export const TicTacToeMulti = () => {
         </button>
       </div>
 
-      {!roomId && (
+      {!roomId ? (
         <>
           <button onClick={createNewGame}>Create Game</button>
           <button onClick={handleOpenJoinDialog}>Join Game</button>
-          <p
-            style={{
-              fontSize: "25px",
-            }}
+          <p style={{ fontSize: "25px" }}>Create or join a match to begin.</p>
+          <Button
+            variant="outlined"
+            className="control-btn"
+            onClick={() => navigate("/history")}
           >
-            Create or join a match to begin.
-          </p>
+            View My Games History
+          </Button>
         </>
-      )}
-
-      {roomId && (
+      ) : (
         <>
-          <p
-            style={{
-              fontSize: "18px",
-            }}
-          >
+          <p style={{ fontSize: "18px" }}>
             Room ID: <b>{roomId}</b>
           </p>
-
           <div className="game-controls">
             <button
               onClick={() => {
@@ -505,7 +357,6 @@ export const TicTacToeMulti = () => {
             >
               Copy Room ID
             </button>
-
             <Button
               variant="contained"
               color="error"
@@ -516,7 +367,7 @@ export const TicTacToeMulti = () => {
             </Button>
           </div>
 
-          {!isInRoom || waitingForOpponent ? (
+          {!isInRoom ? (
             <div
               style={{
                 display: "flex",
@@ -535,13 +386,18 @@ export const TicTacToeMulti = () => {
                   fontSize: "1.2em",
                 }}
               >
-                {!isInRoom ? "Connecting to room..." : "Waiting for opponent…"}
+                Connecting to room...
               </p>
-              {(waitingForOpponent || !isInRoom) && <CircularProgress />}
+              <CircularProgress />
             </div>
           ) : (
-            // Ako smo u sobi i protivnik je povezan, prikayi igru (tablu)
             <>
+              {waitingForOpponent && opponentLeft && (
+                <Alert severity="info" sx={{ mb: 2 }}>
+                  Waiting for opponent to connect...
+                </Alert>
+              )}
+
               <p>
                 You are:{" "}
                 <b className={animateSymbol ? "symbol-rotate" : ""}>
@@ -551,25 +407,22 @@ export const TicTacToeMulti = () => {
               {showSidesSwapped && (
                 <p className="sides-swapped-text">Sides swapped!</p>
               )}
-
               <p>
                 Turn: <b>{currentTurn}</b>
               </p>
 
-              {restartVotes > 0 && (
-                <p
-                  style={{ fontSize: "17px", color: "red", fontWeight: "bold" }}
-                >
-                  Restart confirmations: {restartVotes} / 2
-                </p>
-              )}
-
+              {/* RESTART UI DEO */}
               {restartRequested && (
-                <div style={{ marginTop: "10px",marginBottom:"10px", textAlign: "center" }}>
+                <div
+                  style={{
+                    marginTop: "10px",
+                    marginBottom: "10px",
+                    textAlign: "center",
+                  }}
+                >
                   <p style={{ fontWeight: "bold", color: "#ff9800" }}>
-                    ⏳{restartCountdown}s
+                    ⏳ {restartCountdown}s
                   </p>
-
                   <div
                     style={{
                       display: "flex",
@@ -577,18 +430,11 @@ export const TicTacToeMulti = () => {
                       justifyContent: "center",
                     }}
                   >
-                    {/* first player - samo Cancel */}
                     {iVotedRestart ? (
-                      <Button
-                        variant="contained"
-                        color="warning"
-                        size="small"
-                        onClick={cancelRestart}
-                      >
-                        Cancel
-                      </Button>
+                      <p style={{ fontSize: "0.9rem", color: "green" }}>
+                        You voted. Waiting for opponent...
+                      </p>
                     ) : (
-                      /* second player - samo Confirm */
                       <Button
                         variant="contained"
                         color="success"
@@ -613,26 +459,22 @@ export const TicTacToeMulti = () => {
               </div>
 
               <div className="game-status">
-                {winner && (
-                  <h2 className="winner-message"> {winner} wins! &#x1F973;</h2>
-                )}
+                {winner && <h2 className="winner-message">{winner} wins!</h2>}
                 {isDraw && <h2 className="draw-message">Draw!</h2>}
               </div>
 
-              {/* <button onClick={() => restart()}>Restart</button> */}
               <div className="action-buttons">
                 <Button
-                  onClick={handleOpenHistory}
                   variant="outlined"
                   className="control-btn"
+                  onClick={() => navigate("/history")}
                 >
                   View History
                 </Button>
-
                 <Button
                   variant="outlined"
                   onClick={requestRestart}
-                  disabled={iVotedRestart}
+                  disabled={iVotedRestart || restartRequested}
                 >
                   Restart Game
                 </Button>
@@ -641,6 +483,7 @@ export const TicTacToeMulti = () => {
           )}
         </>
       )}
+
       <Snackbar
         open={snackbar.open}
         autoHideDuration={3000}
@@ -648,218 +491,41 @@ export const TicTacToeMulti = () => {
         anchorOrigin={{ vertical: "top", horizontal: "center" }}
       >
         <Alert
-          onClose={() => setSnackbar({ ...snackbar, open: false })}
           severity={snackbar.severity}
-          sx={{
-            width: "100%",
-            fontWeight: "bold",
-            borderRadius: "12px",
-            boxShadow: "0 4px 20px rgba(0,0,0,0.3)",
-            position: "relative",
-            px: 3,
-            py: 1.5,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-          action={
-            <IconButton
-              aria-label="close"
-              size="small"
-              onClick={() => setSnackbar({ ...snackbar, open: false })}
-              sx={{
-                position: "absolute",
-                top: -5,
-                right: 5,
-                color: "inherit",
-              }}
-            >
-              ✖
-            </IconButton>
-          }
+          onClose={() => setSnackbar({ ...snackbar, open: false })}
         >
-          <span style={{ flex: 1, textAlign: "center" }}>
-            {snackbar.message}
-          </span>
+          {snackbar.message}
         </Alert>
       </Snackbar>
 
-      <Dialog
-        open={openJoinDialog}
-        onClose={handleCloseJoinDialog}
-        disableEnforceFocus
-        disableRestoreFocus
-        sx={{
-          "& .MuiDialog-paper": {
-            borderRadius: "10px",
-            boxShadow: "0 8px 30px rgba(0, 0, 0, 0.1)",
-            padding: "10px",
-            minWidth: { xs: "90%", sm: "350px" },
-          },
-        }}
-      >
-        <DialogTitle
-          sx={{
-            textAlign: "center",
-            fontSize: "1.4rem",
-            fontWeight: 600,
-            paddingBottom: "8px",
-          }}
-        >
-          Enter Room ID
-        </DialogTitle>
-
-        <DialogContent
-          sx={{
-            paddingX: "20px",
-            paddingY: "10px !important",
-          }}
-        >
+      {/* JOIN DIALOG */}
+      <Dialog open={openJoinDialog} onClose={handleCloseJoinDialog}>
+        <DialogTitle>Enter Room ID</DialogTitle>
+        <DialogContent>
           <TextField
             autoFocus
             margin="dense"
-            type="text"
             fullWidth
-            variant="outlined"
-            size="small"
             value={roomInput}
             onChange={(e) => setRoomInput(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleJoinRoom()}
-            sx={{
-              "& .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline":
-                {
-                  borderColor: "#1976d2",
-                  borderWidth: "1px",
-                },
-            }}
           />
         </DialogContent>
-
-        <DialogActions
-          sx={{
-            padding: "16px 20px",
-            justifyContent: "flex-end",
-            borderTop: "1px solid #eee",
-          }}
-        >
-          <Button onClick={handleCloseJoinDialog} sx={{ color: "#666" }}>
-            Cancel
-          </Button>
-          <Button
-            onClick={handleJoinRoom}
-            variant="contained"
-            disableElevation
-            sx={{
-              borderRadius: "7px",
-              fontWeight: 550,
-            }}
-          >
+        <DialogActions>
+          <Button onClick={handleCloseJoinDialog}>Cancel</Button>
+          <Button onClick={handleJoinRoom} variant="contained">
             Join
           </Button>
         </DialogActions>
       </Dialog>
 
-      {/* Game History for Game */}
-      <Dialog
-        open={openHistoryDialog}
-        onClose={handleCloseHistory}
-        disableEnforceFocus
-        disableRestoreFocus
-        fullWidth
-        maxWidth="xs"
-      >
-        <DialogTitle textAlign="center">Game History</DialogTitle>
-
-        <DialogContent
-          sx={{
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-          }}
-        >
-          {historyMoves.length > 0 && (
-            <>
-              <Board
-                board={historyMoves[historyIndex]}
-                handleClick={() => {}}
-              />
-              <p>
-                Move {historyIndex + 1} / {historyMoves.length}
-              </p>
-              {historyIndex === historyMoves.length - 1 && (
-                <p style={{ fontWeight: "bold", marginTop: "8px" }}>
-                  {getHistoryResult()}
-                </p>
-              )}
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  width: "100%",
-                  marginTop: "8px",
-                }}
-              >
-                <Button onClick={handlePrevMove} disabled={historyIndex === 0}>
-                  Prev
-                </Button>
-                <Button
-                  onClick={handleNextMove}
-                  disabled={historyIndex === historyMoves.length - 1}
-                >
-                  Next
-                </Button>
-              </div>
-            </>
-          )}
-        </DialogContent>
-
+      {/* EXIT DIALOG */}
+      <Dialog open={openExitModal} onClose={() => setOpenExitModal(false)}>
+        <DialogTitle>Exit Game?</DialogTitle>
+        <DialogContent>Are you sure you want to leave?</DialogContent>
         <DialogActions>
-          <Button onClick={handleCloseHistory}>Close</Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* EXIT GAME MODAL */}
-      <Dialog
-        open={openExitModal}
-        onClose={() => setOpenExitModal(false)}
-        maxWidth="xs"
-        fullWidth
-        sx={{
-          "& .MuiDialog-paper": {
-            borderRadius: "12px",
-            padding: "8px",
-          },
-        }}
-      >
-        <DialogTitle
-          sx={{ textAlign: "center", fontWeight: 700, fontSize: "25px" }}
-        >
-          Exit Game?
-        </DialogTitle>
-
-        <DialogContent
-          sx={{ textAlign: "center", paddingBottom: "8px", fontSize: "20px" }}
-        >
-          <p>Are you sure you want to leave this match?</p>
-        </DialogContent>
-
-        <DialogActions sx={{ justifyContent: "center", pb: 2, gap: 2 }}>
-          <Button
-            variant="outlined"
-            onClick={() => setOpenExitModal(false)}
-            sx={{ borderRadius: "8px" }}
-          >
-            Cancel
-          </Button>
-
-          <Button
-            variant="contained"
-            color="error"
-            sx={{ borderRadius: "8px" }}
-            onClick={() => {
-              handleExitGame();
-            }}
-          >
+          <Button onClick={() => setOpenExitModal(false)}>Cancel</Button>
+          <Button onClick={handleExitGame} color="error" variant="contained">
             Exit
           </Button>
         </DialogActions>
@@ -868,33 +534,25 @@ export const TicTacToeMulti = () => {
   );
 };
 
-// CHECK WINNER
+// Helper funkcije
 const checkWinner = (board: BoardArray): string | null => {
   const lines = [
-    //Rows(red)
     [board[0][0], board[0][1], board[0][2]],
     [board[1][0], board[1][1], board[1][2]],
     [board[2][0], board[2][1], board[2][2]],
-
-    //Columns(kolone)
     [board[0][0], board[1][0], board[2][0]],
     [board[0][1], board[1][1], board[2][1]],
     [board[0][2], board[1][2], board[2][2]],
-
-    //Diagonals
     [board[0][0], board[1][1], board[2][2]],
     [board[0][2], board[1][1], board[2][0]],
   ];
-
-  for (const line of lines) {
+  for (const line of lines)
     if (line[0] && line[0] === line[1] && line[1] === line[2]) return line[0];
-  }
   return null;
 };
 
 const getWinningCells = (board: BoardArray): [number, number][] => {
   const lines: [number, number][][] = [
-    // Rows
     [
       [0, 0],
       [0, 1],
@@ -910,7 +568,6 @@ const getWinningCells = (board: BoardArray): [number, number][] => {
       [2, 1],
       [2, 2],
     ],
-    // Columns
     [
       [0, 0],
       [1, 0],
@@ -926,7 +583,6 @@ const getWinningCells = (board: BoardArray): [number, number][] => {
       [1, 2],
       [2, 2],
     ],
-    // Diagonals
     [
       [0, 0],
       [1, 1],
@@ -938,16 +594,14 @@ const getWinningCells = (board: BoardArray): [number, number][] => {
       [2, 0],
     ],
   ];
-
   for (const line of lines) {
     const [a, b, c] = line;
     if (
       board[a[0]][a[1]] &&
       board[a[0]][a[1]] === board[b[0]][b[1]] &&
       board[a[0]][a[1]] === board[c[0]][c[1]]
-    ) {
+    )
       return line;
-    }
   }
   return [];
 };
