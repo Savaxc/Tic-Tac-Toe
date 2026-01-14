@@ -26,6 +26,13 @@
 }
 
 /* MULTIPLAYER PAGE */
+.game-status {
+  width: 50%;
+  margin-left: auto;
+  margin-right: auto;
+  margin: 0 auto;
+}
+
 .game-status h2 {
     font-size: 48px;
     font-weight: 800;
@@ -35,6 +42,12 @@
 }
 
 .game-status .winner-message {
+    color: #39e639; 
+    background: #39e63923;
+    border: 3px solid #39e639;
+}
+
+.game-status .loser-message {
     color: #e63946; 
     background: #fde3e6;
     border: 3px solid #e63946;

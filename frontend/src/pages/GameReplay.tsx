@@ -126,7 +126,7 @@ const GameReplay = () => {
         variant="text"
         onClick={() => navigate(-1)}
       >
-        ← Back to History
+        ← Back
       </Button>
     </Box>
   );
