@@ -15,7 +15,6 @@ export const initGameSocket = (io: Server) => {
   const gameHistories = new Map<string, GameHistory>();
   const userToRoom = new Map<number, string>();
 
-  // HELPERS
   const getActiveGame = async (roomId: string) => {
     const res = await pool.query(
       `SELECT id FROM games WHERE room_id = $1 AND finished_at IS NULL`,
@@ -24,33 +23,25 @@ export const initGameSocket = (io: Server) => {
     return res.rows[0] ?? null;
   };
 
-  // CONNECTION
   io.on("connection", (socket) => {
-    console.log("Client connected:", socket.id);
-
     // AUTH
     const token = socket.handshake.auth?.token;
-    if (!token) {
-      socket.disconnect();
-      return;
-    }
+    if (!token) return socket.disconnect();
 
     let userId: number;
     try {
       const decoded: any = jwt.verify(token, process.env.JWT_SECRET!);
       userId = decoded.id;
     } catch {
-      socket.disconnect();
-      return;
+      return socket.disconnect();
     }
 
     // JOIN ROOM
     socket.on("joinRoom", async (roomId: string) => {
       try {
         const game = await getActiveGame(roomId);
-
         if (!game) {
-          socket.emit("roomError", "Room does not exist or was closed.");
+          socket.emit("roomError", "Room not found or closed");
           return;
         }
 
@@ -68,7 +59,6 @@ export const initGameSocket = (io: Server) => {
           gameHistories.set(roomId, history);
           socket.join(roomId);
           userToRoom.set(userId, roomId);
-
           socket.emit("assignSymbol", "X");
           return;
         }
@@ -104,10 +94,10 @@ export const initGameSocket = (io: Server) => {
         );
 
         socket.emit("assignSymbol", "O");
-        socket.to(roomId).emit("opponentConnected");
+        io.to(roomId).emit("opponentConnected");
       } catch (err) {
-        console.error("joinRoom error:", err);
-        socket.emit("roomError", "Failed to join room");
+        console.error(err);
+        socket.emit("roomError", "Join failed");
       }
     });
 
@@ -119,41 +109,39 @@ export const initGameSocket = (io: Server) => {
       const moveIndex = history.moves.length;
       history.moves.push(board);
 
-      try {
-        await pool.query(
-          `
-          INSERT INTO game_moves (game_id, move_index, board)
-          VALUES ($1, $2, $3)
-          `,
-          [history.gameId, moveIndex, JSON.stringify(board)]
-        );
-      } catch (err) {
-        console.error("Failed to save move:", err);
-      }
+      await pool.query(
+        `
+        INSERT INTO game_moves (game_id, move_index, board)
+        VALUES ($1, $2, $3)
+        `,
+        [history.gameId, moveIndex, JSON.stringify(board)]
+      );
 
       socket.to(roomId).emit("opponentMove", board);
     });
 
-    // GAME OVER
-    socket.on("gameOver", async ({ roomId, winner }) => {
+    // GAME OVER (WINNER = USER ID)
+    socket.on("gameOver", async ({ roomId, winnerUserId }) => {
       try {
         await pool.query(
-          `
-          UPDATE games
-          SET winner = $1, finished_at = NOW()
-          WHERE room_id = $2
-          `,
-          [winner, roomId]
+        `
+        UPDATE games
+        SET winner_user_id = $1,
+            finished_at = NOW()
+        WHERE room_id = $2
+          AND finished_at IS NULL
+        `,
+          [winnerUserId, roomId]
         );
 
-        io.to(roomId).emit("gameFinished", winner);
+        io.to(roomId).emit("gameFinished", winnerUserId);
       } catch (err) {
         console.error("gameOver error:", err);
       }
     });
 
-    // RESTART
-    socket.on("requestRestart", (roomId: string) => {
+    // RESTART / REMATCH
+    socket.on("requestRestart", async (roomId: string) => {
       const history = gameHistories.get(roomId);
       if (!history) return;
 
@@ -161,7 +149,6 @@ export const initGameSocket = (io: Server) => {
 
       if (history.restartVotes.size === 1) {
         history.countdown = 10;
-
         io.to(roomId).emit("restartCountdown", history.countdown);
 
         history.restartTimer = setInterval(() => {
@@ -180,14 +167,31 @@ export const initGameSocket = (io: Server) => {
       if (history.restartVotes.size === 2) {
         clearInterval(history.restartTimer!);
 
+        // zatvori staru
+        await pool.query(
+          `UPDATE games SET finished_at = NOW() WHERE id = $1`,
+          [history.gameId]
+        );
+
+        // nova partija (ista soba, zamena strana)
+        const newGame = await pool.query(
+          `
+          INSERT INTO games (room_id, player_x_user_id, player_o_user_id, created_at)
+          VALUES ($1, $2, $3, NOW())
+          RETURNING id
+          `,
+          [roomId, history.players.O, history.players.X]
+        );
+
+        history.gameId = newGame.rows[0].id;
+        history.moves = [];
+        history.restartVotes.clear();
+        history.countdown = undefined;
+
         history.players = {
           X: history.players.O,
           O: history.players.X,
         };
-
-        history.moves = [];
-        history.restartVotes.clear();
-        history.countdown = undefined;
 
         io.to(roomId).emit("restartConfirmed", history.players);
       }
@@ -202,30 +206,22 @@ export const initGameSocket = (io: Server) => {
       userToRoom.delete(userId);
 
       const room = io.sockets.adapter.rooms.get(roomId);
-
       if (!room || room.size === 0) {
         const history = gameHistories.get(roomId);
         gameHistories.delete(roomId);
 
         if (history) {
-          // proveri da li postoji ijedan potez
-          const movesRes = await pool.query(
+          const res = await pool.query(
             `SELECT COUNT(*) FROM game_moves WHERE game_id = $1`,
             [history.gameId]
           );
 
-          const movesCount = Number(movesRes.rows[0].count);
-
-          if (movesCount === 0) {
+          if (Number(res.rows[0].count) === 0) {
             await pool.query(`DELETE FROM games WHERE id = $1`, [
               history.gameId,
             ]);
-            console.log(`Game ${history.gameId} deleted (never started)`);
-            return;
           }
         }
-
-        console.log(`Room ${roomId} closed (game already finished or abandoned)`);
       }
     });
   });

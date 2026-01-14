@@ -19,8 +19,12 @@ import {
   CircularProgress,
 } from "@mui/material";
 import axios from "axios";
+import GameHistory from "../../pages/GameHistory";
+import CloseIcon from "@mui/icons-material/Close";
+import IconButton from "@mui/material/IconButton";
 
-type BoardArray = Array<Array<string | null>>;
+type BoardArray = Array<Array<PlayerSymbol | null>>;
+type PlayerSymbol = "X" | "O";
 
 interface GameHistoryData {
   moves: BoardArray[];
@@ -29,6 +33,10 @@ interface GameHistoryData {
 }
 
 export const TicTacToeMulti = () => {
+  const myUserId = Number(
+    JSON.parse(atob(localStorage.getItem("token")!.split(".")[1])).id
+  );
+
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const roomId = params.get("room");
@@ -39,9 +47,10 @@ export const TicTacToeMulti = () => {
     Array(3).fill(null)
   );
 
+  const [boardWinner, setBoardWinner] = useState<"X" | "O" | null>(null);
   const [board, setBoard] = useState<BoardArray>(emptyBoard);
   const [mySymbol, setMySymbol] = useState<"X" | "O">("X");
-  const [winner, setWinner] = useState<string | null>(null);
+  const [winner, setWinner] = useState<"WIN" | "LOSS" | null>(null);
   const [isDraw, setIsDraw] = useState(false);
   const [isInRoom, setIsInRoom] = useState(false);
   const [showLogoutNotif, setShowLogoutNotif] = useState(false);
@@ -51,13 +60,14 @@ export const TicTacToeMulti = () => {
   const [openJoinDialog, setOpenJoinDialog] = useState(false);
   const [roomInput, setRoomInput] = useState("");
   const [openExitModal, setOpenExitModal] = useState(false);
+  const [openHistory, setOpenHistory] = useState(false);
 
   // Opponent info
   const [opponentLeft, setOpponentLeft] = useState(false);
   const [waitingForOpponent, setWaitingForOpponent] = useState(false);
 
   // Winning cells
-  const winningCells = winner ? getWinningCells(board) : [];
+  const winningCells = boardWinner ? getWinningCells(board) : [];
 
   // useSFX
   const { playSoundEffect } = useSFX();
@@ -102,7 +112,7 @@ export const TicTacToeMulti = () => {
 
     socketRef.current = io("http://localhost:8080", {
       auth: { token },
-      transports: ["websocket"], 
+      transports: ["websocket"],
     });
 
     const socket = socketRef.current;
@@ -136,8 +146,11 @@ export const TicTacToeMulti = () => {
           setBoard(lastBoardState);
 
           const w = checkWinner(lastBoardState);
-          if (w) setWinner(w);
-          else if (!lastBoardState.flat().includes(null)) setIsDraw(true);
+          setBoardWinner(w);
+
+          if (!w && !lastBoardState.flat().includes(null)) {
+            setIsDraw(true);
+          }
         }
       );
     };
@@ -150,12 +163,25 @@ export const TicTacToeMulti = () => {
 
     const handleOpponentMove = (newBoard: BoardArray) => {
       setBoard(newBoard);
+
+      const w = checkWinner(newBoard);
+      setBoardWinner(w);
     };
 
-    const handleGameFinished = (winner: string | null) => {
-      if (!winner) setIsDraw(true);
-      else setWinner(winner);
-      playSoundEffect("GAME_OVER");
+    const handleGameFinished = (winnerUserId: number | null) => {
+      if (!winnerUserId) {
+        setIsDraw(true);
+        return;
+      }
+
+      if (winnerUserId === myUserId) {
+        setWinner("WIN");
+        playSoundEffect("GAME_WIN");
+        confetti();
+      } else {
+        setWinner("LOSS");
+        playSoundEffect("GAME_OVER");
+      }
     };
 
     const handleRestartCountdown = (count: number) => {
@@ -174,6 +200,7 @@ export const TicTacToeMulti = () => {
         setShowSidesSwapped(false);
       }, 1000);
 
+      setBoardWinner(null);
       setBoard(emptyBoard);
       setWinner(null);
       setIsDraw(false);
@@ -243,11 +270,13 @@ export const TicTacToeMulti = () => {
     if (
       restartRequested ||
       !isInRoom ||
+      waitingForOpponent ||
       winner ||
       currentTurn !== mySymbol ||
       board[r][c]
-    )
+    ) {
       return;
+    }
 
     const updated = board.map((row, rIndex) =>
       row.map((col, cIndex) => (rIndex === r && cIndex === c ? mySymbol : col))
@@ -255,26 +284,28 @@ export const TicTacToeMulti = () => {
 
     setBoard(updated);
 
-    if (socketRef.current) {
-      socketRef.current.emit("playerMove", { roomId, board: updated });
-    }
+    socketRef.current?.emit("playerMove", {
+      roomId,
+      board: updated,
+    });
 
-    const w = checkWinner(updated);
-    if (w) {
-      setWinner(w);
-      if (socketRef.current) {
-        socketRef.current.emit("gameOver", { roomId, winner: w });
-      }
-      if (w === mySymbol) playSoundEffect("GAME_WIN");
-      confetti();
+    const boardWinner = checkWinner(updated); // "X" | "O" | null
+    setBoardWinner(boardWinner);
+
+    if (boardWinner) {
+      socketRef.current?.emit("gameOver", {
+        roomId,
+        winnerUserId: myUserId,
+      });
       return;
     }
 
     if (!updated.flat().includes(null)) {
       setIsDraw(true);
-      if (socketRef.current) {
-        socketRef.current.emit("gameOver", { roomId, winner: null });
-      }
+      socketRef.current?.emit("gameOver", {
+        roomId,
+        winnerUserId: null,
+      });
     }
   };
 
@@ -309,10 +340,18 @@ export const TicTacToeMulti = () => {
 
   const handleExitGame = () => {
     setOpenExitModal(false);
+
     if (socketRef.current) {
       socketRef.current.emit("leaveRoom", roomId);
       socketRef.current.disconnect();
     }
+
+    setBoard(emptyBoard);
+    setBoardWinner(null);
+    setWinner(null);
+    setIsDraw(false);
+    setIsInRoom(false);
+
     navigate("/multiplayer");
   };
 
@@ -336,11 +375,40 @@ export const TicTacToeMulti = () => {
           <p style={{ fontSize: "25px" }}>Create or join a match to begin.</p>
           <Button
             variant="outlined"
-            className="control-btn"
-            onClick={() => navigate("/history")}
+            sx={{ marginTop: "10px" }}
+            onClick={() => setOpenHistory(true)}
           >
             View My Games History
           </Button>
+
+          <Dialog
+            open={openHistory}
+            onClose={() => setOpenHistory(false)}
+            maxWidth="md"
+            fullWidth
+          >
+            <DialogTitle
+              sx={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                pr: 1,
+              }}
+            >
+              Game History
+              <IconButton
+                aria-label="close"
+                onClick={() => setOpenHistory(false)}
+                sx={{ color: "grey.500" }}
+              >
+                <CloseIcon />
+              </IconButton>
+            </DialogTitle>
+
+            <DialogContent dividers>
+              <GameHistory />
+            </DialogContent>
+          </Dialog>
         </>
       ) : (
         <>
@@ -392,7 +460,7 @@ export const TicTacToeMulti = () => {
             </div>
           ) : (
             <>
-              {waitingForOpponent && opponentLeft && (
+              {waitingForOpponent && (
                 <Alert severity="info" sx={{ mb: 2 }}>
                   Waiting for opponent to connect...
                 </Alert>
@@ -459,18 +527,16 @@ export const TicTacToeMulti = () => {
               </div>
 
               <div className="game-status">
-                {winner && <h2 className="winner-message">{winner} wins!</h2>}
-                {isDraw && <h2 className="draw-message">Draw!</h2>}
+                {winner === "WIN" && (
+                  <h2 className="winner-message">🎉 You win!</h2>
+                )}
+                {winner === "LOSS" && (
+                  <h2 className="loser-message">😢 You lose!</h2>
+                )}
+                {isDraw && <h2 className="draw-message">🤝 Draw!</h2>}
               </div>
 
               <div className="action-buttons">
-                <Button
-                  variant="outlined"
-                  className="control-btn"
-                  onClick={() => navigate("/history")}
-                >
-                  View History
-                </Button>
                 <Button
                   variant="outlined"
                   onClick={requestRestart}
@@ -479,6 +545,43 @@ export const TicTacToeMulti = () => {
                   Restart Game
                 </Button>
               </div>
+
+              <Button
+                variant="outlined"
+                sx={{ marginTop: "10px" }}
+                onClick={() => setOpenHistory(true)}
+              >
+                View History
+              </Button>
+
+              <Dialog
+                open={openHistory}
+                onClose={() => setOpenHistory(false)}
+                maxWidth="md"
+                fullWidth
+              >
+                <DialogTitle
+                  sx={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    pr: 1,
+                  }}
+                >
+                  Game History
+                  <IconButton
+                    aria-label="close"
+                    onClick={() => setOpenHistory(false)}
+                    sx={{ color: "grey.500" }}
+                  >
+                    <CloseIcon />
+                  </IconButton>
+                </DialogTitle>
+
+                <DialogContent dividers>
+                  <GameHistory />
+                </DialogContent>
+              </Dialog>
             </>
           )}
         </>
@@ -535,7 +638,7 @@ export const TicTacToeMulti = () => {
 };
 
 // Helper funkcije
-const checkWinner = (board: BoardArray): string | null => {
+const checkWinner = (board: BoardArray): PlayerSymbol | null => {
   const lines = [
     [board[0][0], board[0][1], board[0][2]],
     [board[1][0], board[1][1], board[1][2]],

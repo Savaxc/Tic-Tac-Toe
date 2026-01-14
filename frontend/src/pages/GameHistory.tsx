@@ -85,11 +85,6 @@ const GameHistory = () => {
       <Typography variant="h4" mb={3} textAlign="center">
         📜 Game History
       </Typography>
-      
-      <Button variant="outlined" onClick={() => navigate(-1)}>
-        ← Back
-      </Button>
-
 
       {/* Stats Panel */}
       <Paper sx={{ p: 2, mb: 3, borderRadius: 3 }}>
@@ -106,8 +101,9 @@ const GameHistory = () => {
 
       {/* Filter */}
       <FormControl sx={{ mb: 3, minWidth: 150 }}>
-        <InputLabel>Filter by result</InputLabel>
+        <InputLabel sx={{fontSize: "15px"}}>Filter by result</InputLabel>
         <Select
+          sx={{paddingTop: "15px"}}
           value={filter}
           label="Filter by result"
           onChange={(e) => setFilter(e.target.value as GameResult | "ALL")}
