@@ -257,8 +257,3 @@ The client listens for these events to update the UI in real-time.
 
 ### Developed by [Savaxc]
 📌 Full-Stack Developer (React + Node.js + PostgreSQL)
-
----
-
-## License
-This project is licensed under the MIT License.
