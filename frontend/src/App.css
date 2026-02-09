@@ -93,3 +93,31 @@ button:hover {
   color: #dcfff3;
   background: #333;
 }
+
+/*Header effect*/
+.hover-underline {
+  cursor: pointer;
+  position: relative;
+  display: inline-block;
+  transition: transform 0.25s ease;
+}
+
+.hover-underline:hover {
+  transform: scale(1.08);
+}
+
+.hover-underline::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: -4px;
+  width: 0%;
+  height: 3px;
+  background: #61dafb;
+  border-radius: 2px;
+  transition: width 0.28s ease;
+}
+
+.hover-underline:hover::after {
+  width: 100%;
+}
