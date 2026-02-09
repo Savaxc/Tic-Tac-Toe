@@ -47,30 +47,32 @@ A full-stack multiplayer Tic-Tac-Toe web application built with **React (TypeScr
 ---
 
 ## Project Structure
+
+```text
 tic-tac-toe/
 │
-├── fronted/ # React frontend
-│ ├── src/
-│ │ ├── api/
-│ │ ├── assets/
-│ │ ├── components/
-│ │ ├── hooks/
-│ │ ├── pages/
-│ │ └── utils/
-│ └── package.json
+├── frontend/             # React frontend
+│   ├── src/
+│   │   ├── api/          # Axios/Fetch configurations
+│   │   ├── assets/       # Styles, images, and fonts
+│   │   ├── components/   # Reusable UI components
+│   │   ├── hooks/        # Custom React hooks
+│   │   ├── pages/        # Main screen views
+│   │   └── utils/        # Helper functions
+│   └── package.json
 │
-├── backend/ # Node.js backend
-│ ├── src/
-| | |── config/
-│ │ ├── controllers/
-│ │ ├── middleware/
-│ │ ├── models/
-│ │ ├── routes/
-| | ├── sockets/
-│ │ ├── utils/
-| | ├── app.ts
-| | └──server.ts
-│ └── package.json
+├── backend/              # Node.js backend
+│   ├── src/
+│   │   ├── config/       # Database and env configurations
+│   │   ├── controllers/  # Request handlers
+│   │   ├── middleware/   # Auth and validation logic
+│   │   ├── models/       # Database schemas
+│   │   ├── routes/       # API endpoints
+│   │   ├── sockets/      # Socket.IO event logic
+│   │   ├── utils/        # Shared utility functions
+│   │   ├── app.ts        # Express app setup
+│   │   └── server.ts     # Server entry point
+│   └── package.json
 │
 └── README.md
 
