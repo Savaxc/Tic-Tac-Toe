@@ -75,6 +75,7 @@ tic-tac-toe/
 │   └── package.json
 │
 └── README.md
+```
 
 ---
 
